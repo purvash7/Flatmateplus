@@ -1,0 +1,42 @@
+{
+  "summary": "Tested FlatMate+ backend (auth, onboarding, liveness, discover, swipe, matches, messages, upload, WS) and frontend landing/register flow. Auth, onboarding, liveness, discover with match-scoring (score=100 for complementary pair) all work. CRITICAL: POST /api/swipe returns 500 on mutual match due to Motor mutating inserted doc with ObjectId _id that FastAPI cannot serialize. Frontend register successfully routes to /onboarding wizard.",
+  "tested_scope": ["backend", "frontend", "auth", "integration"],
+  "passed": [
+    "GET /api/ returns {app: FlatMate+, status: ok}",
+    "POST /api/auth/register creates user + JWT",
+    "POST /api/auth/register duplicate email -> 400",
+    "POST /api/auth/login valid creds returns token+user (alice@test.com)",
+    "POST /api/auth/login wrong password -> 401",
+    "GET /api/auth/me with Bearer returns user; without -> 401",
+    "PUT /api/onboarding sets onboarding_done=true (both test users)",
+    "POST /api/liveness/verify steps=4 -> liveness_verified=true",
+    "POST /api/liveness/verify steps=2 -> 400 as expected",
+    "GET /api/discover returns candidate in same city with score=100 for complementary pair (have_house vs need_house_from_someone, veg-veg, matching cleanliness/sleep)",
+    "POST /api/swipe direction=like (first user, non-mutual) -> matched:false",
+    "POST /api/upload multipart image returns storage path",
+    "GET /api/files/{path} serves file (200)",
+    "PUT /api/profile with photos+prompts sets profile_complete=true",
+    "GET /api/matches for alice returns [] (no matches yet)",
+    "WebSocket /api/ws/{user_id}?token={jwt} connects successfully with JWT",
+    "Frontend Landing loads with FlatMate branding, register form submits, routes to /onboarding",
+    "Onboarding wizard Step 1 (name/age/gender) renders with data-testid selectors",
+    "google-login-btn present on landing page"
+  ],
+  "failed": [
+    {
+      "area": "backend /api/swipe (mutual match)",
+      "issue": "500 Internal Server Error when mutual like triggers first-time match creation. ValueError: 'ObjectId' object is not iterable during response serialization.",
+      "evidence": "Traceback in /var/log/supervisor/backend.err.log: fastapi/encoders.py -> ValueError([TypeError(\"'ObjectId' object is not iterable\")]). Root cause: server.py line ~464 inserts `doc` via `db.matches.insert_one(doc)` which mutates doc in-place adding _id ObjectId, then returns `{'match': doc, ...}` which FastAPI cannot JSON-serialize.",
+      "priority": "HIGH"
+    }
+  ],
+  "action_items": [
+    "Fix /api/swipe mutual match response: after `await db.matches.insert_one(doc)`, either pop `_id` from doc (`doc.pop('_id', None)`) or build a fresh dict without _id before returning. Same pattern should be verified for any other insert_one paths that return the inserted doc.",
+    "Retest full swipe->match->messages flow after fix; the match may have been partially inserted during failing test (verify no dangling matches without response). Also verify subsequent duplicate-swipe path (existing match branch) works – it uses find_one with {_id:0} so likely OK.",
+    "Not tested end-to-end due to blocker: GET /api/matches with actual match, POST /api/messages, GET /api/messages/{match_id}, WS broadcast on new message. Frontend Discover/Match modal/Chat pages not exercised end-to-end (depend on match creation)."
+  ],
+  "success_rate": {"backend": "88%", "frontend": "100% (landing+register+routing to onboarding tested only)"},
+  "retest_needed": true,
+  "full_testing_deferred": true,
+  "test_credentials": "Present at /app/memory/test_credentials.md and validated (alice@test.com/password123 login works)"
+}

@@ -1,0 +1,39 @@
+{
+  "summary": "Retested FlatMate+ swipe->match->chat happy path end-to-end. ObjectId fix on POST /api/swipe and POST /api/messages verified. All 4 backend regression tests pass (mutual match returns clean JSON, /api/matches returns list with other+last_message, /api/messages send+list chronological, WebSocket broadcasts new message to receiver in real time). Frontend end-to-end (viewport 420x900): registered 2 users via API, seeded onboarding+liveness+profile+mutual match, logged in as first user in browser, navigated to /matches, clicked match card, sent 'hello from playwright' via chat-input + chat-send-btn, verified sent-message bubble visible. Discover page renders candidate cards for a fully-onboarded/liveness-verified/profile-complete user, swipe-pass-btn advances to next card, swipe-like-btn present.",
+  "tested_scope": ["backend", "frontend", "integration", "websocket"],
+  "passed": [
+    "POST /api/swipe mutual match returns 200 with matched=true, clean match dict (no _id), other user public fields",
+    "GET /api/matches returns list with {match, other, last_message} shape, no _id leakage",
+    "POST /api/messages returns clean JSON (no _id) and persists",
+    "GET /api/messages/{match_id} returns messages in chronological (created_at asc) order",
+    "WebSocket /api/ws/{user_id}?token={jwt} authenticates and broadcasts type=message payload to receiver on POST /api/messages",
+    "Frontend login -> /discover redirect works",
+    "Frontend /matches lists match card and navigates to /chat/{match_id}",
+    "Frontend Chat: sending message via chat-input + chat-send-btn shows outgoing bubble",
+    "Frontend Discover: swipe-pass-btn works and next candidate appears; swipe-like-btn rendered"
+  ],
+  "failed": [],
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Chat header + Matches list", "issues": ["When peer photo path is missing/broken, the small avatar shows broken-image icon instead of the initial-letter fallback (fallback only triggers when other.photos[0] is falsy, not on image load error). Consider onError handler to swap to initial."]}
+    ]
+  },
+  "critical_code_review_comments": [
+    "Chat.jsx: WebSocket is opened in a useEffect dependent on [user, matchId]; in React StrictMode/dev this double-mounts and the first WS is closed before OPEN — harmless warning in console but noisy. Consider guarding with readyState or moving connection to a stable provider.",
+    "server.py get_messages returns messages array but no auth-verification that the requesting user is part of the match beyond user_ids filter (looks correct actually — filters by user_ids: user_id). OK.",
+    "server.py send_message pushes ws only to the 'other_id'; sender's own second tab won't receive echo. Minor UX nit — sender already appends locally after HTTP response.",
+    "server.py /discover: gender filter uses mutual check which is fine; but candidates limit 200 could grow — add pagination later."
+  ],
+  "test_report_links": ["/app/backend/tests/backend_test.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [],
+  "updated_files": ["/app/backend/tests/backend_test.py"],
+  "success_rate": {"backend": "100% (4/4)", "frontend": "100% (login+matches+chat+discover flows)"},
+  "test_credentials": "alice@test.com / password123 verified; created TEST_ui_main_* and TEST_ui_peer_* users for E2E seed.",
+  "seed_data_creation": "Created 2 UI test users (TEST_ui_main_c9ccc8, TEST_ui_peer_62dbc6) with onboarding+liveness+profile_complete and a mutual match (match_e3ca6294eff3). Backend pytest also creates TEST_alice_* / TEST_bob_* pairs on each run.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend regression file at /app/backend/tests/backend_test.py covers swipe/match/messages/WS. ObjectId leak fixed via doc.pop('_id', None) after insert_one in both /api/swipe and /api/messages. Frontend chat-input/chat-send-btn, swipe-like-btn/swipe-pass-btn, discover-refresh-btn, chat-back-btn testids present and working."
+}

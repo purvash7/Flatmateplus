@@ -1,56 +1,75 @@
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useEffect } from "react";
+import { AuthProvider, useAuth } from "@/context/AuthContext";
+import { Toaster } from "@/components/ui/sonner";
+import Landing from "@/pages/Landing";
+import AuthCallback from "@/pages/AuthCallback";
+import Onboarding from "@/pages/Onboarding";
+import Liveness from "@/pages/Liveness";
+import ProfileBuilder from "@/pages/ProfileBuilder";
+import Discover from "@/pages/Discover";
+import Matches from "@/pages/Matches";
+import Chat from "@/pages/Chat";
+import Profile from "@/pages/Profile";
 import "@/App.css";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import axios from "axios";
-import { HOME } from "@/constants/testIds";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
-
-const Home = () => {
-  const helloWorldApi = async () => {
-    try {
-      const response = await axios.get(`${API}/`);
-      console.log(response.data.message);
-    } catch (e) {
-      console.error(e, `errored out requesting / api`);
-    }
-  };
-
-  useEffect(() => {
-    helloWorldApi();
-  }, []);
-
+function AppRouter() {
+  const location = useLocation();
+  if (location.hash?.includes("session_id=")) return <AuthCallback />;
   return (
-    <div>
-      <header className="App-header">
-        <a
-          data-testid={HOME.emergentLink}
-          className="App-link"
-          href="https://emergent.sh"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <img src="https://avatars.githubusercontent.com/in/1201222?s=120&u=2686cf91179bbafbc7a71bfbc43004cf9ae1acea&v=4" />
-        </a>
-        <p className="mt-5">Building something incredible ~!</p>
-      </header>
-    </div>
-  );
-};
-
-function App() {
-  return (
-    <div className="App">
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Home />}>
-            <Route index element={<Home />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
-    </div>
+    <Routes>
+      <Route path="/" element={<Landing />} />
+      <Route path="/onboarding" element={<Protected><Onboarding /></Protected>} />
+      <Route path="/liveness" element={<Protected><Liveness /></Protected>} />
+      <Route path="/profile-setup" element={<Protected><ProfileBuilder /></Protected>} />
+      <Route path="/discover" element={<Protected><Discover /></Protected>} />
+      <Route path="/matches" element={<Protected><Matches /></Protected>} />
+      <Route path="/chat/:matchId" element={<Protected><Chat /></Protected>} />
+      <Route path="/profile" element={<Protected><Profile /></Protected>} />
+      <Route path="*" element={<Navigate to="/" />} />
+    </Routes>
   );
 }
 
-export default App;
+function Protected({ children }) {
+  const { user, loading } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+  useEffect(() => {
+    if (loading) return;
+    if (!user) { navigate("/", { replace: true }); return; }
+    // gate onboarding step
+    if (!user.onboarding_done && location.pathname !== "/onboarding") {
+      navigate("/onboarding", { replace: true });
+    } else if (user.onboarding_done && !user.liveness_verified && location.pathname !== "/liveness") {
+      navigate("/liveness", { replace: true });
+    } else if (user.liveness_verified && !user.profile_complete &&
+               !["/profile-setup", "/liveness"].includes(location.pathname) &&
+               location.pathname !== "/onboarding") {
+      navigate("/profile-setup", { replace: true });
+    }
+  }, [user, loading, location.pathname, navigate]);
+
+  if (loading) {
+    return (
+      <div className="app-shell flex items-center justify-center">
+        <div className="text-muted-foreground text-sm">loading…</div>
+      </div>
+    );
+  }
+  if (!user) return null;
+  return children;
+}
+
+export default function App() {
+  return (
+    <div className="App">
+      <AuthProvider>
+        <BrowserRouter>
+          <AppRouter />
+          <Toaster position="top-center" richColors />
+        </BrowserRouter>
+      </AuthProvider>
+    </div>
+  );
+}
