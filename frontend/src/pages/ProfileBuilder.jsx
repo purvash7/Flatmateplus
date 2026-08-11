@@ -7,7 +7,8 @@ import { Label } from "@/components/ui/label";
 import { api, fileUrl } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
-import { Camera, Plus, X, Sparkles } from "lucide-react";
+import { Camera, Plus, X, Sparkles, ShieldCheck, Home, Loader2 } from "lucide-react";
+import { loadModels, detectDescriptorFromImage } from "@/lib/faceUtils";
 
 const PROMPT_OPTIONS = [
   "The house rule I swear by is…",
@@ -20,50 +21,101 @@ const PROMPT_OPTIONS = [
 
 export default function ProfileBuilder() {
   const { user, refreshUser } = useAuth();
+  const isFlatOwner = user?.housing_status === "have_house";
   const [bio, setBio] = useState(user?.bio || "");
   const [photos, setPhotos] = useState(user?.photos || []);
+  const [flatPhotos, setFlatPhotos] = useState(user?.flat_photos || []);
   const [prompts, setPrompts] = useState(user?.prompts?.length ? user.prompts : [{ q: PROMPT_OPTIONS[0], a: "" }]);
+  const [mainDescriptor, setMainDescriptor] = useState(null); // set when new main photo is uploaded
+  const [verifying, setVerifying] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const fileRef = useRef();
+  const flatFileRef = useRef();
   const navigate = useNavigate();
 
-  const onPick = async (e) => {
+  const isMainPhotoNew = photos[0] && photos[0] !== (user?.photos?.[0]);
+
+  const uploadPhoto = async (file) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    const { data } = await api.post("/upload", fd, { headers: { "Content-Type": "multipart/form-data" } });
+    return data.path;
+  };
+
+  const onPickPerson = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
     try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const { data } = await api.post("/upload", fd, { headers: { "Content-Type": "multipart/form-data" } });
-      setPhotos(p => [...p, data.path]);
-      toast.success("Photo added");
+      // If this will be the MAIN photo, verify face count on client first
+      const isMain = photos.length === 0;
+      if (isMain) {
+        setVerifying(true);
+        await loadModels();
+        const bmp = await createImageBitmap(file);
+        const { descriptor, count } = await detectDescriptorFromImage(await bitmapToBlob(bmp));
+        if (count === 0) throw new Error("No face found — main photo must clearly show your face");
+        if (count > 1) throw new Error("Multiple faces detected — main photo must be of you alone");
+        setMainDescriptor(descriptor);
+        setVerifying(false);
+      }
+      const path = await uploadPhoto(file);
+      setPhotos(p => [...p, path]);
+      toast.success(isMain ? "Main photo added — will verify against your selfie on save" : "Photo added");
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Upload failed");
+      setVerifying(false);
+      toast.error(err.response?.data?.detail || err.message || "Upload failed");
     } finally {
       setUploading(false);
       e.target.value = "";
     }
   };
 
-  const removePhoto = (idx) => setPhotos(p => p.filter((_, i) => i !== idx));
+  const onPickFlat = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const path = await uploadPhoto(file);
+      setFlatPhotos(p => [...p, path]);
+      toast.success("Flat photo added");
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Upload failed");
+    } finally {
+      setUploading(false); e.target.value = "";
+    }
+  };
+
+  const removePhoto = (idx) => {
+    const removingMain = idx === 0;
+    setPhotos(p => p.filter((_, i) => i !== idx));
+    if (removingMain) setMainDescriptor(null);
+  };
 
   const setPromptAt = (i, key, val) => setPrompts(p => p.map((x, idx) => idx === i ? { ...x, [key]: val } : x));
-
   const addPrompt = () => setPrompts(p => [...p, { q: PROMPT_OPTIONS[p.length % PROMPT_OPTIONS.length], a: "" }]);
 
   const submit = async () => {
-    if (photos.length < 1) return toast.error("Add at least 1 photo");
+    if (photos.length < 1) return toast.error("Add your main photo");
+    if (isFlatOwner && flatPhotos.length < 1) return toast.error("Add at least 1 photo of your flat");
     const filled = prompts.filter(p => p.a.trim());
     if (filled.length < 1) return toast.error("Answer at least 1 prompt");
     setSaving(true);
     try {
-      await api.put("/profile", { bio, photos, prompts: filled });
+      const payload = { bio, photos, flat_photos: flatPhotos, prompts: filled };
+      // Recompute descriptor for main if it's new but we somehow don't have it (edge case)
+      if (isMainPhotoNew && !mainDescriptor) {
+        toast.error("Re-upload your main photo — verification lost. Try again.");
+        setSaving(false); return;
+      }
+      if (isMainPhotoNew && mainDescriptor) payload.face_descriptor_main = mainDescriptor;
+      await api.put("/profile", payload);
       await refreshUser();
       toast.success("Profile ready — go find your people!");
       navigate("/discover");
     } catch (e) {
-      toast.error("Failed to save");
+      toast.error(e.response?.data?.detail || "Failed to save");
     } finally { setSaving(false); }
   };
 
@@ -72,12 +124,19 @@ export default function ProfileBuilder() {
       <div className="px-6 pt-10 pb-4">
         <div className="font-mono-label text-primary">FINAL STEP</div>
         <h1 className="text-3xl font-display font-extrabold leading-tight mt-1">Build your profile</h1>
-        <p className="text-muted-foreground mt-1">Photos and prompts — let people meet the real you.</p>
+        <p className="text-muted-foreground mt-1">
+          Your main photo is verified against your live selfie. Anyone editing it re-runs the check.
+        </p>
       </div>
 
       <div className="px-6 space-y-6">
         <div>
-          <Label className="font-mono-label mb-3 block">PHOTOS</Label>
+          <div className="flex items-center justify-between mb-3">
+            <Label className="font-mono-label">YOUR PHOTOS</Label>
+            <span className="text-xs text-muted-foreground flex items-center gap-1">
+              <ShieldCheck className="w-3.5 h-3.5 text-primary"/> main = you, alone
+            </span>
+          </div>
           <div className="grid grid-cols-3 gap-3">
             {photos.map((p, i) => (
               <div key={p} className="relative aspect-[3/4] rounded-2xl overflow-hidden bg-secondary border">
@@ -90,17 +149,49 @@ export default function ProfileBuilder() {
               </div>
             ))}
             {photos.length < 6 && (
-              <button data-testid="add-photo-btn" onClick={()=>fileRef.current?.click()} disabled={uploading}
+              <button data-testid="add-photo-btn" onClick={()=>fileRef.current?.click()} disabled={uploading||verifying}
                       className="aspect-[3/4] rounded-2xl border-2 border-dashed grid place-items-center bg-card hover:bg-secondary">
                 <div className="text-center">
-                  <Camera className="w-6 h-6 mx-auto text-muted-foreground"/>
-                  <div className="text-xs text-muted-foreground mt-1">{uploading ? "…" : "Add"}</div>
+                  {verifying ? <Loader2 className="w-5 h-5 mx-auto animate-spin text-primary"/> : <Camera className="w-6 h-6 mx-auto text-muted-foreground"/>}
+                  <div className="text-xs text-muted-foreground mt-1">{verifying?"checking face…":(uploading?"…":"Add")}</div>
                 </div>
               </button>
             )}
           </div>
-          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onPick} data-testid="photo-input"/>
+          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onPickPerson} data-testid="photo-input"/>
         </div>
+
+        {isFlatOwner && (
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <Label className="font-mono-label">YOUR FLAT'S PHOTOS</Label>
+              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                <Home className="w-3.5 h-3.5 text-accent"/> required
+              </span>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              {flatPhotos.map((p, i) => (
+                <div key={p} className="relative aspect-square rounded-2xl overflow-hidden bg-secondary border">
+                  <img src={fileUrl(p)} className="w-full h-full object-cover" alt="Flat"/>
+                  <button data-testid={`remove-flat-${i}`} onClick={()=>setFlatPhotos(f => f.filter((_, x) => x !== i))}
+                          className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-foreground/80 text-background grid place-items-center">
+                    <X className="w-3.5 h-3.5"/>
+                  </button>
+                </div>
+              ))}
+              {flatPhotos.length < 6 && (
+                <button data-testid="add-flat-btn" onClick={()=>flatFileRef.current?.click()} disabled={uploading}
+                        className="aspect-square rounded-2xl border-2 border-dashed grid place-items-center bg-card hover:bg-secondary">
+                  <div className="text-center">
+                    <Home className="w-5 h-5 mx-auto text-muted-foreground"/>
+                    <div className="text-xs text-muted-foreground mt-1">Add flat</div>
+                  </div>
+                </button>
+              )}
+            </div>
+            <input ref={flatFileRef} type="file" accept="image/*" className="hidden" onChange={onPickFlat} data-testid="flat-photo-input"/>
+          </div>
+        )}
 
         <div>
           <Label className="font-mono-label mb-2 block">SHORT BIO</Label>
@@ -140,4 +231,11 @@ export default function ProfileBuilder() {
       </div>
     </div>
   );
+}
+
+async function bitmapToBlob(bmp) {
+  const canvas = document.createElement("canvas");
+  canvas.width = bmp.width; canvas.height = bmp.height;
+  canvas.getContext("2d").drawImage(bmp, 0, 0);
+  return await new Promise(r => canvas.toBlob(r, "image/jpeg", 0.92));
 }

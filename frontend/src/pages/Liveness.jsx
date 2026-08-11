@@ -4,8 +4,9 @@ import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
-import { Camera, CheckCircle2 } from "lucide-react";
+import { Camera, CheckCircle2, Loader2 } from "lucide-react";
 import { motion } from "framer-motion";
+import { loadModels, detectDescriptorFromVideo } from "@/lib/faceUtils";
 
 const STEP_ORDER = ["look_center", "look_left", "look_right", "smile"];
 const STEP_LABEL = {
@@ -20,6 +21,7 @@ export default function Liveness() {
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
   const [ready, setReady] = useState(false);
+  const [modelsReady, setModelsReady] = useState(false);
   const [error, setError] = useState("");
   const [stepIdx, setStepIdx] = useState(0);
   const [done, setDone] = useState(false);
@@ -41,6 +43,7 @@ export default function Liveness() {
         setError("Camera access denied. Please allow camera to continue.");
       }
     })();
+    loadModels().then(ok => setModelsReady(ok));
     return () => streamRef.current?.getTracks().forEach(t => t.stop());
   }, []);
 
@@ -52,16 +55,26 @@ export default function Liveness() {
   const submit = async () => {
     setSubmitting(true);
     try {
-      const canvas = canvasRef.current;
       const video = videoRef.current;
+      const descriptor = await detectDescriptorFromVideo(video);
+      if (!descriptor) {
+        toast.error("Could not detect a face. Make sure your face is clearly visible and try again.");
+        setSubmitting(false);
+        return;
+      }
+      const canvas = canvasRef.current;
       canvas.width = 480; canvas.height = 640;
       const ctx = canvas.getContext("2d");
+      ctx.save();
       ctx.translate(canvas.width, 0); ctx.scale(-1, 1);
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      ctx.restore();
       const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
-      await api.post("/liveness/verify", { steps_completed: STEP_ORDER.length, selfie_base64: dataUrl });
+      await api.post("/liveness/verify", {
+        steps_completed: STEP_ORDER.length, selfie_base64: dataUrl, face_descriptor: descriptor,
+      });
       await refreshUser();
-      toast.success("You're verified! Now let's build your profile.");
+      toast.success("You're verified! Now build your profile.");
       streamRef.current?.getTracks().forEach(t => t.stop());
       navigate("/profile-setup");
     } catch (e) {
@@ -76,7 +89,7 @@ export default function Liveness() {
       <div className="px-6 pt-10 pb-6">
         <div className="font-mono-label text-primary">HUMAN CHECK</div>
         <h1 className="text-3xl font-display font-extrabold leading-tight mt-1">Prove you&apos;re real</h1>
-        <p className="text-muted-foreground mt-1">Complete 4 quick actions in front of the camera.</p>
+        <p className="text-muted-foreground mt-1">Complete 4 quick actions — we&apos;ll capture your face for verification.</p>
       </div>
 
       <div className="px-6">
@@ -93,6 +106,11 @@ export default function Liveness() {
               <video ref={videoRef} className="w-full h-full object-cover" style={{ transform: "scaleX(-1)" }} playsInline muted/>
               <div className="absolute inset-4 rounded-2xl border-2 border-primary/70 pointer-events-none pulse-ring"/>
               <canvas ref={canvasRef} className="hidden"/>
+              {!modelsReady && (
+                <div className="absolute bottom-3 left-3 right-3 bg-background/90 backdrop-blur rounded-xl px-3 py-2 text-xs flex items-center gap-2">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin"/> Loading face model…
+                </div>
+              )}
             </>
           )}
         </div>
@@ -123,10 +141,10 @@ export default function Liveness() {
               <CheckCircle2 className="w-6 h-6 text-primary"/>
               <div className="font-display font-bold text-lg">All checks passed</div>
             </div>
-            <p className="text-sm text-muted-foreground mt-2">Snap the final selfie — we&apos;ll only use it for verification.</p>
-            <Button data-testid="liveness-submit-btn" onClick={submit} disabled={submitting}
+            <p className="text-sm text-muted-foreground mt-2">We&apos;ll snap the final selfie and encode your face for photo matching.</p>
+            <Button data-testid="liveness-submit-btn" onClick={submit} disabled={submitting || !modelsReady}
                     className="mt-4 w-full h-12 rounded-2xl bg-primary hover:bg-primary/90">
-              {submitting ? "Verifying…" : "Capture & continue"}
+              {submitting ? "Verifying…" : (modelsReady ? "Capture & continue" : "Loading model…")}
             </Button>
           </div>
         )}

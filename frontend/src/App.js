@@ -11,6 +11,7 @@ import Discover from "@/pages/Discover";
 import Matches from "@/pages/Matches";
 import Chat from "@/pages/Chat";
 import Profile from "@/pages/Profile";
+import EditProfile from "@/pages/EditProfile";
 import "@/App.css";
 
 function AppRouter() {
@@ -26,6 +27,7 @@ function AppRouter() {
       <Route path="/matches" element={<Protected><Matches /></Protected>} />
       <Route path="/chat/:matchId" element={<Protected><Chat /></Protected>} />
       <Route path="/profile" element={<Protected><Profile /></Protected>} />
+      <Route path="/edit-profile" element={<Protected><EditProfile /></Protected>} />
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>
   );

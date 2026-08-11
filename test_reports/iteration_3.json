@@ -1,0 +1,60 @@
+{
+  "summary": "FlatMate+ v3 backend + frontend regression completed. Backend: 22/22 pytest cases pass across two suites — old regression (swipe/match/messages/WS, updated to include face_descriptor) and new v3 suite (geo/search, non-negotiables, liveness descriptor rules, profile face-verify match/mismatch, housing gate for have_house, PATCH /profile/edit (ignores name), discover primary/nearby buckets, live filter food, non-negotiable food_pref hard filter, fallback_message when primary empty). Frontend smoke at viewport 420x900: Landing loads; /api/geo/search returns 6 shaped results; login->discover redirect works; Discover filters sheet opens with all filter-* testids (radius, budget, food, smoking, drinking, housing, apply, reset); applying filters re-queries /discover and shows badge count; EditProfile /edit-profile prefills current user, name disabled, bio & work_schedule PATCH persist via /profile/edit, /auth/me confirms name unchanged; Onboarding shows 8-step progress (1/8) with ob-* testids.",
+  "tested_scope": ["backend", "frontend", "integration"],
+  "passed": [
+    "GET /api/geo/search?q=indira returns list with primary/city/lat/lng (6 results, first: Mahipalpur, Delhi)",
+    "GET /api/geo/search min_length=3 enforced (422 for q='in')",
+    "PUT /api/onboarding accepts all new fields (work_schedule, home_lat/lng, radius_km, office_locality/lat/lng, male_guests_ok, family_visits_ok, hosts_parties, flat_preferences)",
+    "PUT /api/non-negotiables persists list; reflected via /auth/me; requires auth (401 without token)",
+    "POST /api/liveness/verify: rejects missing/short face_descriptor (400); accepts 128-float descriptor; face_descriptor_selfie NEVER returned by /auth/me",
+    "PUT /api/profile: main photo without descriptor -> 400; mismatched (random) descriptor -> 400 with 'match'; matching descriptor -> 200 with main_photo_verified=true",
+    "PUT /api/profile housing gate: have_house without flat_photos -> 400 'flat'; with flat_photos -> 200",
+    "PATCH /api/profile/edit updates age/bio/radius_km/work_schedule/interests; drops unknown 'name' key (pydantic model has no name -> ignored)",
+    "GET /api/discover returns {primary, nearby, fallback_message}; same-locality candidate lands in primary, far candidate in nearby; each card has highlights[] list",
+    "GET /api/discover ?food=veg filters out non_veg candidates (live filter)",
+    "Non-negotiable food_pref hard-filters mismatched candidates from discover buckets",
+    "fallback_message set when primary empty and nearby has results",
+    "Backend regression (updated): swipe mutual match returns clean JSON (no _id), matches list has other+last_message, messages send+list chronological, WS broadcasts new message to receiver",
+    "Frontend Landing loads",
+    "Frontend Login->Discover redirect + filters sheet with all filter-* testids opens; apply re-queries",
+    "Frontend EditProfile prefills, name disabled, PATCH persists (bio & work_schedule verified via /auth/me), name field unchanged",
+    "Frontend Onboarding shows 8-step progress (1/8 rendered)"
+  ],
+  "failed": [],
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Discover header filters badge", "issues": ["activeFiltersCount counts radius_km + budget_min + budget_max as separate 'active' entries even when a user just opens+applies with defaults, so the badge shows 4 after applying only 'food=veg'. Consider counting only user-changed filters vs defaults."]},
+      {"screen": "FiltersSheet / Sheet (radix Dialog)", "issues": ["Console warning: 'Missing Description or aria-describedby for DialogContent'. Add SheetDescription or aria-describedby for a11y."]}
+    ]
+  },
+  "critical_code_review_comments": [
+    "server.py update_profile: face_descriptor_main is popped from upd via upd.pop after model_dump but the model already includes it — currently works but relies on ProfileUpdate having face_descriptor_main field; keep in sync.",
+    "server.py update_profile: profile_complete requires photos AND prompts AND housing_ok, but on subsequent PATCHes without photos/prompts (e.g., only editing bio) it would recompute using prev photos/prompts — actually this is /profile only; /profile/edit doesn't touch it. OK.",
+    "compute_match still returns 'score' — no longer shown on card (SwipeCard omits it) but sent in payload; harmless but consider omitting from /discover items too.",
+    "server.py geo/search: relies on external Nominatim; returns [] on any exception which is fine but users on rate-limit will silently see no results. Consider surfacing a hint.",
+    "EditProfile.jsx: refreshUser called after PATCH — good; but /profile/edit doesn't re-run profile_complete recalc, so if user edits housing_status from need_house->have_house without adding flat_photos, they may bypass the gate that /profile enforces. Consider re-validating in PATCH endpoint too."
+  ],
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/backend_test_v3.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "(Optional) Fix Discover filter-count badge to only count user-changed filters",
+    "(Optional) Add SheetDescription/aria-describedby to FiltersSheet",
+    "(Optional) Have /api/profile/edit re-validate housing gate (have_house requires flat_photos)"
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py (added face_descriptor to liveness call so old suite works with new schema)",
+    "/app/backend/tests/backend_test_v3.py (new — 18 tests covering v3 endpoints)"
+  ],
+  "success_rate": {"backend": "100% (22/22)", "frontend": "100% (Landing, Login, Discover filters, EditProfile save, Onboarding 8 steps)"},
+  "test_credentials": "alice@test.com / password123 (v2 existing user). New v3 users created dynamically as TEST_v3_* and TEST_ui3_*.",
+  "seed_data_creation": "Backend pytest creates TEST_v3_* users per test. Frontend test created TEST_ui3_* + TEST_uio_* users; TEST_ui3_* was seeded with full onboarding+liveness (fake 128 descriptor)+profile(same descriptor)+non_negotiables=['food_pref'] to reach /discover state.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All 22 backend pytests pass (run: `pytest backend/tests/backend_test.py backend/tests/backend_test_v3.py`). New v3 endpoints all working: /api/geo/search, /api/non-negotiables, /api/profile/edit (name-immutable), /api/discover with primary/nearby buckets + fallback_message + live filters + non-negotiables enforcement, PUT /api/profile with face-descriptor cosine/euclidean check (threshold 0.6). Frontend routes verified: /edit-profile, /discover filter sheet, /onboarding 8 steps. Face-api.js frontend model wasn't loaded in headless test — instead backend logic tested with identical descriptor list (distance 0 -> match) and random descriptor (distance >>0.6 -> reject). Selfie descriptor is never leaked via /auth/me (server strips face_descriptor_selfie in user_public)."
+}

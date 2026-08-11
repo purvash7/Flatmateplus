@@ -5,43 +5,68 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import AreaAutocomplete from "@/components/AreaAutocomplete";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
-import { ArrowLeft, ArrowRight } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check } from "lucide-react";
 
-const CITIES = ["Bangalore", "Mumbai", "Delhi NCR", "Pune", "Hyderabad", "Chennai", "Kolkata", "Ahmedabad", "Goa"];
 const INTERESTS = ["Cooking", "Fitness", "Gaming", "Reading", "Movies", "Music", "Travel", "Startups", "Art", "Pets", "Yoga", "Hiking", "Foodie", "Tech"];
 const LANGUAGES = ["English", "Hindi", "Kannada", "Tamil", "Telugu", "Marathi", "Bengali", "Gujarati", "Punjabi"];
+const FLAT_PREFS = [
+  ["attached_washroom", "Attached washroom"], ["balcony", "Balcony"], ["lift", "Lift"],
+  ["power_backup", "Power backup"], ["parking", "Parking"], ["ac", "AC"],
+  ["wifi", "Wi-Fi"], ["geyser", "Geyser"], ["gated_community", "Gated community"], ["gym", "Gym"],
+];
+
+const NON_NEG_OPTIONS = [
+  ["food_pref", "Food preference"], ["smoking", "Smoking habits"], ["drinking", "Drinking habits"],
+  ["cleanliness", "Cleanliness level"], ["pets_ok", "Pets"], ["male_guests_ok", "Male guests"],
+  ["family_visits_ok", "Family visits"], ["hosts_parties", "Party frequency"],
+  ["sleep_schedule", "Sleep schedule"],
+];
+
+const Chip = ({ active, children, onClick, testid }) => (
+  <button data-testid={testid} type="button" onClick={onClick}
+          className={`rounded-full px-3.5 py-1.5 text-sm border transition-colors ${active?"bg-primary text-primary-foreground border-primary":"bg-card hover:bg-secondary"}`}>
+    {children}
+  </button>
+);
 
 export default function Onboarding() {
   const { refreshUser, user } = useAuth();
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
   const [d, setD] = useState({
-    age: 24, gender: "", city: "", locality: "",
+    age: 24, gender: "",
+    city: "", locality: "", home_lat: null, home_lng: null, radius_km: 5,
+    office_locality: "", office_lat: null, office_lng: null,
     housing_status: "", budget_min: 8000, budget_max: 25000, move_in_date: "",
-    flatmate_gender_pref: "any", work_profile: "", company_or_college: "",
+    flatmate_gender_pref: "any",
+    work_profile: "", company_or_college: "", work_schedule: "hybrid",
     food_pref: "", cooks_at_home: "", cleanliness: 3, sleep_schedule: "",
     social_level: "", drinking: "no", smoking: "no", pets_ok: true,
-    guests_freq: "sometimes", music_ok: true, languages: [], interests: [],
+    guests_freq: "sometimes", male_guests_ok: true, family_visits_ok: true, hosts_parties: "sometimes",
+    music_ok: true, languages: [], interests: [], flat_preferences: [],
+    non_negotiables: [],
   });
   const set = (k, v) => setD(p => ({ ...p, [k]: v }));
   const toggleIn = (k, v) => setD(p => ({ ...p, [k]: p[k].includes(v) ? p[k].filter(x => x !== v) : [...p[k], v] }));
 
+  const isFlatOwner = d.housing_status === "have_house";
+
   const steps = [
     {
-      title: "The basics", sub: "Let's start with a quick intro.",
+      title: "The basics", sub: "Quick intro.",
       valid: () => d.age >= 18 && d.gender,
       body: (
         <div className="space-y-6">
           <div>
             <Label className="font-mono-label mb-2 block">YOUR NAME</Label>
-            <Input data-testid="ob-name" value={user?.name || ""} disabled className="rounded-2xl h-12 bg-secondary"/>
+            <Input value={user?.name || ""} disabled className="rounded-2xl h-12 bg-secondary"/>
           </div>
           <div>
             <Label className="font-mono-label mb-2 block">AGE</Label>
@@ -50,37 +75,38 @@ export default function Onboarding() {
           </div>
           <div>
             <Label className="font-mono-label mb-3 block">GENDER</Label>
-            <RadioGroup value={d.gender} onValueChange={(v)=>set("gender", v)} className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               {[["male","Man"],["female","Woman"],["non_binary","Non-binary"]].map(([v,l])=>(
-                <label key={v} className={`rounded-2xl border p-3 text-center cursor-pointer text-sm ${d.gender===v?"bg-primary text-primary-foreground border-primary":"bg-card hover:bg-secondary"}`}>
-                  <RadioGroupItem data-testid={`ob-gender-${v}`} value={v} className="sr-only"/>{l}
-                </label>
+                <Chip testid={`ob-gender-${v}`} key={v} active={d.gender===v} onClick={()=>set("gender", v)}>{l}</Chip>
               ))}
-            </RadioGroup>
+            </div>
           </div>
         </div>
       )
     },
     {
-      title: "Where & when", sub: "City, area and move-in.",
-      valid: () => d.city && d.locality && d.move_in_date,
+      title: "Where you live", sub: "Search your preferred neighbourhood.",
+      valid: () => d.locality && d.city && d.move_in_date,
       body: (
         <div className="space-y-6">
           <div>
-            <Label className="font-mono-label mb-3 block">CITY</Label>
-            <div className="flex flex-wrap gap-2">
-              {CITIES.map(c => (
-                <button data-testid={`ob-city-${c}`} type="button" key={c} onClick={()=>set("city", c)}
-                        className={`px-4 py-2 rounded-full text-sm border ${d.city===c?"bg-foreground text-background border-foreground":"bg-card hover:bg-secondary"}`}>
-                  {c}
-                </button>
-              ))}
-            </div>
+            <Label className="font-mono-label mb-2 block">HOME AREA (TYPE 4+ LETTERS)</Label>
+            <AreaAutocomplete testid="ob-home-area" value={d.locality}
+              onSelect={(r)=>{ setD(p=>({...p, locality: r.locality, city: r.city, home_lat: r.lat, home_lng: r.lng})); }}/>
+            {d.city && <div className="mt-2 text-xs text-muted-foreground">📍 {d.locality}, {d.city}</div>}
           </div>
           <div>
-            <Label className="font-mono-label mb-2 block">PREFERRED LOCALITY</Label>
-            <Input data-testid="ob-locality" placeholder="e.g. Indiranagar, Powai" value={d.locality}
-                   onChange={(e)=>set("locality", e.target.value)} className="rounded-2xl h-12"/>
+            <Label className="font-mono-label mb-2 block">SEARCH RADIUS</Label>
+            <div className="flex items-center justify-between text-sm mb-2 text-muted-foreground">
+              <span>1 km</span><span className="text-foreground font-semibold">{d.radius_km} km</span><span>25 km</span>
+            </div>
+            <Slider data-testid="ob-radius" min={1} max={25} step={1} value={[d.radius_km]}
+                    onValueChange={(v)=>set("radius_km", v[0])}/>
+          </div>
+          <div>
+            <Label className="font-mono-label mb-2 block">OFFICE / COLLEGE AREA (OPTIONAL)</Label>
+            <AreaAutocomplete testid="ob-office-area" value={d.office_locality}
+              onSelect={(r)=>{ setD(p=>({...p, office_locality: r.locality, office_lat: r.lat, office_lng: r.lng})); }}/>
           </div>
           <div>
             <Label className="font-mono-label mb-2 block">MOVE-IN DATE</Label>
@@ -96,12 +122,12 @@ export default function Onboarding() {
       body: (
         <div className="space-y-3">
           {[
-            ["have_house","I have a house","Looking for a flatmate to move in"],
+            ["have_house","I have a house","Looking for a flatmate — flat photos required"],
             ["need_house_together","Let's find a place together","Team up and hunt a house"],
             ["need_house_from_someone","Looking for a spare room","Someone else has space"],
           ].map(([v,t,s]) => (
             <button data-testid={`ob-housing-${v}`} key={v} type="button" onClick={()=>set("housing_status", v)}
-                    className={`w-full text-left p-4 rounded-2xl border ${d.housing_status===v?"bg-primary text-primary-foreground border-primary":"bg-card hover:bg-secondary"}`}>
+                    className={`w-full text-left p-4 rounded-2xl border transition-colors ${d.housing_status===v?"bg-primary text-primary-foreground border-primary":"bg-card hover:bg-secondary"}`}>
               <div className="font-semibold">{t}</div>
               <div className={`text-sm mt-1 ${d.housing_status===v?"text-primary-foreground/85":"text-muted-foreground"}`}>{s}</div>
             </button>
@@ -120,15 +146,14 @@ export default function Onboarding() {
     },
     {
       title: "Flatmate vibe", sub: "Who would you live with?",
-      valid: () => d.flatmate_gender_pref && d.work_profile,
+      valid: () => d.flatmate_gender_pref && d.work_profile && d.work_schedule,
       body: (
         <div className="space-y-6">
           <div>
             <Label className="font-mono-label mb-3 block">FLATMATE GENDER PREFERENCE</Label>
             <div className="grid grid-cols-3 gap-2">
               {[["male","Men"],["female","Women"],["any","Anyone"]].map(([v,l])=>(
-                <button data-testid={`ob-fgpref-${v}`} key={v} type="button" onClick={()=>set("flatmate_gender_pref", v)}
-                        className={`rounded-2xl border p-3 text-sm ${d.flatmate_gender_pref===v?"bg-primary text-primary-foreground border-primary":"bg-card hover:bg-secondary"}`}>{l}</button>
+                <Chip testid={`ob-fgpref-${v}`} key={v} active={d.flatmate_gender_pref===v} onClick={()=>set("flatmate_gender_pref", v)}>{l}</Chip>
               ))}
             </div>
           </div>
@@ -136,21 +161,29 @@ export default function Onboarding() {
             <Label className="font-mono-label mb-3 block">WORK PROFILE</Label>
             <div className="grid grid-cols-2 gap-2">
               {[["working_professional","Working"],["student","Student"],["freelancer","Freelancer"],["business","Business"]].map(([v,l])=>(
-                <button data-testid={`ob-work-${v}`} key={v} type="button" onClick={()=>set("work_profile", v)}
-                        className={`rounded-2xl border p-3 text-sm ${d.work_profile===v?"bg-foreground text-background border-foreground":"bg-card hover:bg-secondary"}`}>{l}</button>
+                <Chip testid={`ob-work-${v}`} key={v} active={d.work_profile===v} onClick={()=>set("work_profile", v)}>{l}</Chip>
               ))}
             </div>
           </div>
           <div>
-            <Label className="font-mono-label mb-2 block">COMPANY / COLLEGE (optional)</Label>
+            <Label className="font-mono-label mb-2 block">WHERE DO YOU WORK / STUDY?</Label>
             <Input data-testid="ob-company" value={d.company_or_college}
-                   onChange={(e)=>set("company_or_college", e.target.value)} className="rounded-2xl h-12"/>
+                   onChange={(e)=>set("company_or_college", e.target.value)}
+                   placeholder="Company / college name" className="rounded-2xl h-12"/>
+          </div>
+          <div>
+            <Label className="font-mono-label mb-3 block">WORK SCHEDULE</Label>
+            <div className="grid grid-cols-3 gap-2">
+              {[["wfh","WFH"],["wfo","WFO"],["hybrid","Hybrid"]].map(([v,l])=>(
+                <Chip testid={`ob-schedule-${v}`} key={v} active={d.work_schedule===v} onClick={()=>set("work_schedule", v)}>{l}</Chip>
+              ))}
+            </div>
           </div>
         </div>
       )
     },
     {
-      title: "Home rhythm", sub: "How do you live day-to-day?",
+      title: "Home rhythm", sub: "Your day-to-day.",
       valid: () => d.food_pref && d.cooks_at_home && d.sleep_schedule && d.social_level,
       body: (
         <div className="space-y-6">
@@ -158,17 +191,15 @@ export default function Onboarding() {
             <Label className="font-mono-label mb-3 block">FOOD PREFERENCE</Label>
             <div className="grid grid-cols-2 gap-2">
               {[["veg","Vegetarian"],["non_veg","Non-Vegetarian"],["eggetarian","Eggetarian"],["vegan","Vegan"]].map(([v,l])=>(
-                <button data-testid={`ob-food-${v}`} key={v} type="button" onClick={()=>set("food_pref", v)}
-                        className={`rounded-2xl border p-3 text-sm ${d.food_pref===v?"bg-primary text-primary-foreground border-primary":"bg-card hover:bg-secondary"}`}>{l}</button>
+                <Chip testid={`ob-food-${v}`} key={v} active={d.food_pref===v} onClick={()=>set("food_pref", v)}>{l}</Chip>
               ))}
             </div>
           </div>
           <div>
             <Label className="font-mono-label mb-3 block">COOKS AT HOME</Label>
             <div className="grid grid-cols-4 gap-2">
-              {[["daily","Daily"],["sometimes","Sometimes"],["rarely","Rarely"],["never","Never"]].map(([v,l])=>(
-                <button data-testid={`ob-cook-${v}`} key={v} type="button" onClick={()=>set("cooks_at_home", v)}
-                        className={`rounded-2xl border p-2 text-xs ${d.cooks_at_home===v?"bg-foreground text-background border-foreground":"bg-card hover:bg-secondary"}`}>{l}</button>
+              {[["daily","Daily"],["sometimes","Some"],["rarely","Rarely"],["never","Never"]].map(([v,l])=>(
+                <Chip testid={`ob-cook-${v}`} key={v} active={d.cooks_at_home===v} onClick={()=>set("cooks_at_home", v)}>{l}</Chip>
               ))}
             </div>
           </div>
@@ -184,8 +215,7 @@ export default function Onboarding() {
             <Label className="font-mono-label mb-3 block">SLEEP SCHEDULE</Label>
             <div className="grid grid-cols-3 gap-2">
               {[["early_bird","Early bird"],["night_owl","Night owl"],["flexible","Flexible"]].map(([v,l])=>(
-                <button data-testid={`ob-sleep-${v}`} key={v} type="button" onClick={()=>set("sleep_schedule", v)}
-                        className={`rounded-2xl border p-3 text-xs ${d.sleep_schedule===v?"bg-primary text-primary-foreground border-primary":"bg-card hover:bg-secondary"}`}>{l}</button>
+                <Chip testid={`ob-sleep-${v}`} key={v} active={d.sleep_schedule===v} onClick={()=>set("sleep_schedule", v)}>{l}</Chip>
               ))}
             </div>
           </div>
@@ -193,8 +223,7 @@ export default function Onboarding() {
             <Label className="font-mono-label mb-3 block">SOCIAL LEVEL</Label>
             <div className="grid grid-cols-3 gap-2">
               {[["introvert","Introvert"],["ambivert","Ambivert"],["extrovert","Extrovert"]].map(([v,l])=>(
-                <button data-testid={`ob-social-${v}`} key={v} type="button" onClick={()=>set("social_level", v)}
-                        className={`rounded-2xl border p-3 text-xs ${d.social_level===v?"bg-foreground text-background border-foreground":"bg-card hover:bg-secondary"}`}>{l}</button>
+                <Chip testid={`ob-social-${v}`} key={v} active={d.social_level===v} onClick={()=>set("social_level", v)}>{l}</Chip>
               ))}
             </div>
           </div>
@@ -202,7 +231,7 @@ export default function Onboarding() {
       )
     },
     {
-      title: "Habits & vibes", sub: "The little things that matter.",
+      title: "Habits & guests", sub: "The little things that matter.",
       valid: () => true,
       body: (
         <div className="space-y-5">
@@ -211,8 +240,7 @@ export default function Onboarding() {
               <Label className="font-mono-label mb-3 block">{l.toUpperCase()}</Label>
               <div className="grid grid-cols-3 gap-2">
                 {[["no","No"],["occasionally","Occasionally"],["yes","Yes"]].map(([v, lb])=>(
-                  <button data-testid={`ob-${k}-${v}`} key={v} type="button" onClick={()=>set(k, v)}
-                          className={`rounded-2xl border p-3 text-sm ${d[k]===v?"bg-primary text-primary-foreground border-primary":"bg-card hover:bg-secondary"}`}>{lb}</button>
+                  <Chip testid={`ob-${k}-${v}`} key={v} active={d[k]===v} onClick={()=>set(k, v)}>{lb}</Chip>
                 ))}
               </div>
             </div>
@@ -222,15 +250,30 @@ export default function Onboarding() {
             <Switch data-testid="ob-pets" checked={d.pets_ok} onCheckedChange={(v)=>set("pets_ok", v)}/>
           </div>
           <div className="flex items-center justify-between p-4 rounded-2xl bg-card border">
+            <div><div className="font-semibold">Male guests / boyfriends OK?</div><div className="text-sm text-muted-foreground">Overnight or visits</div></div>
+            <Switch data-testid="ob-malegs" checked={d.male_guests_ok} onCheckedChange={(v)=>set("male_guests_ok", v)}/>
+          </div>
+          <div className="flex items-center justify-between p-4 rounded-2xl bg-card border">
+            <div><div className="font-semibold">Family visits OK?</div><div className="text-sm text-muted-foreground">Parents, siblings staying over</div></div>
+            <Switch data-testid="ob-family" checked={d.family_visits_ok} onCheckedChange={(v)=>set("family_visits_ok", v)}/>
+          </div>
+          <div className="flex items-center justify-between p-4 rounded-2xl bg-card border">
             <div><div className="font-semibold">Loud music OK?</div><div className="text-sm text-muted-foreground">Speakers, jam sessions</div></div>
             <Switch data-testid="ob-music" checked={d.music_ok} onCheckedChange={(v)=>set("music_ok", v)}/>
           </div>
           <div>
-            <Label className="font-mono-label mb-3 block">GUESTS FREQUENCY</Label>
+            <Label className="font-mono-label mb-3 block">GUEST FREQUENCY</Label>
             <div className="grid grid-cols-3 gap-2">
               {[["rarely","Rarely"],["sometimes","Sometimes"],["often","Often"]].map(([v,l])=>(
-                <button data-testid={`ob-guests-${v}`} key={v} type="button" onClick={()=>set("guests_freq", v)}
-                        className={`rounded-2xl border p-3 text-sm ${d.guests_freq===v?"bg-foreground text-background border-foreground":"bg-card hover:bg-secondary"}`}>{l}</button>
+                <Chip testid={`ob-guests-${v}`} key={v} active={d.guests_freq===v} onClick={()=>set("guests_freq", v)}>{l}</Chip>
+              ))}
+            </div>
+          </div>
+          <div>
+            <Label className="font-mono-label mb-3 block">HOSTS PARTIES</Label>
+            <div className="grid grid-cols-3 gap-2">
+              {[["rarely","Rarely"],["sometimes","Sometimes"],["often","Often"]].map(([v,l])=>(
+                <Chip testid={`ob-party-${v}`} key={v} active={d.hosts_parties===v} onClick={()=>set("hosts_parties", v)}>{l}</Chip>
               ))}
             </div>
           </div>
@@ -264,6 +307,45 @@ export default function Onboarding() {
               ))}
             </div>
           </div>
+          {isFlatOwner && (
+            <div>
+              <Label className="font-mono-label mb-3 block">YOUR FLAT'S AMENITIES</Label>
+              <div className="flex flex-wrap gap-2">
+                {FLAT_PREFS.map(([v, l]) => (
+                  <Badge data-testid={`ob-flatpref-${v}`} key={v} onClick={()=>toggleIn("flat_preferences", v)}
+                         className={`cursor-pointer rounded-full px-3 py-1.5 text-sm ${d.flat_preferences.includes(v)?"bg-accent text-accent-foreground":"bg-card text-foreground border border-border hover:bg-secondary"}`}>
+                    {l}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )
+    },
+    {
+      title: "Non-negotiables", sub: "What must a flatmate get right? Pick up to 4.",
+      valid: () => true,
+      body: (
+        <div>
+          <p className="text-sm text-muted-foreground mb-4">These become hard filters — we'll only show people who match these exactly.</p>
+          <div className="space-y-2">
+            {NON_NEG_OPTIONS.map(([v, l]) => {
+              const active = d.non_negotiables.includes(v);
+              return (
+                <button data-testid={`ob-nn-${v}`} key={v} type="button"
+                        onClick={()=>{
+                          if (active) toggleIn("non_negotiables", v);
+                          else if (d.non_negotiables.length < 4) toggleIn("non_negotiables", v);
+                          else toast.info("Maximum 4 non-negotiables");
+                        }}
+                        className={`w-full flex items-center justify-between p-4 rounded-2xl border transition-colors ${active?"bg-primary text-primary-foreground border-primary":"bg-card hover:bg-secondary"}`}>
+                  <span className="font-semibold">{l}</span>
+                  {active && <Check className="w-5 h-5"/>}
+                </button>
+              );
+            })}
+          </div>
         </div>
       )
     },
@@ -274,11 +356,13 @@ export default function Onboarding() {
 
   const next = async () => {
     if (!cur.valid()) { toast.error("Please complete this step"); return; }
-    if (step < steps.length - 1) { setStep(step + 1); return; }
+    if (step < steps.length - 1) { setStep(step + 1); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
     try {
-      await api.put("/onboarding", d);
+      const { non_negotiables, ...onboardingPayload } = d;
+      await api.put("/onboarding", onboardingPayload);
+      await api.put("/non-negotiables", { non_negotiables });
       await refreshUser();
-      toast.success("Basics done! Time for a quick selfie check.");
+      toast.success("Basics done! Time for the human check.");
       navigate("/liveness");
     } catch (e) {
       toast.error(e.response?.data?.detail || "Failed to save");

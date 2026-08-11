@@ -1,5 +1,5 @@
 """FlatMate+ backend regression: swipe->match, matches list, messages, WS broadcast."""
-import os, uuid, asyncio, json
+import os, uuid, asyncio, json, random
 import pytest
 import requests
 import websockets
@@ -32,7 +32,7 @@ def _onboard(tok, gender, housing_status, flatmate_gender_pref="any"):
     }
     r = requests.put(f"{API}/onboarding", json=payload, headers=_hdr(tok))
     assert r.status_code == 200, r.text
-    r = requests.post(f"{API}/liveness/verify", json={"steps_completed": 4}, headers=_hdr(tok))
+    r = requests.post(f"{API}/liveness/verify", json={"steps_completed": 4, "face_descriptor": [random.random() for _ in range(128)]}, headers=_hdr(tok))
     assert r.status_code == 200, r.text
 
 

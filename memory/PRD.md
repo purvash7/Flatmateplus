@@ -18,14 +18,22 @@ Build a flatmate matching web app (India-focused) called FlatMate+ with:
 
 ## Implemented (Feb 2026)
 - Landing page with dual auth (JWT + Google)
-- 7-step onboarding wizard (age, gender, city, budget, housing intent, work, habits, interests)
-- Liveness check with 4-action prompts + selfie capture uploaded to object storage
-- Profile builder (photos ×6, bio, prompts)
-- Swipe discovery feed with framer-motion drag physics and match-score badges
-- Compatibility algorithm (out of 100) using city, housing complement, budget overlap, food, cleanliness, sleep, social, habits, interests
-- Mutual match detection → celebratory match modal
-- Matches list with last-message preview
-- Real-time chat via WebSocket + REST send
+- Multi-step onboarding wizard with area autocomplete + radius + office pin
+- Liveness check + face descriptor (face-api.js) stored server-side
+- Profile builder: photo face-match against selfie, mandatory flat photos for have_house
+- Non-negotiables step → hard filters in matching
+- Swipe discovery: same-locality first, nearby fallback, live filter sheet (radius, budget, food, smoking, drinking, housing)
+- Compatibility algorithm returning score + highlights; cards show top 4 matched-attribute chips (no numeric score)
+- Verified badge on cards for face-matched users
+- Mutual match detection → celebratory modal
+- Matches list, real-time WebSocket chat
+- Full edit-profile page (all fields except name) with housing-switch guard
+
+## Backend endpoints (v3)
+- /api/geo/search — Nominatim proxy (India-scoped)
+- /api/non-negotiables — save hard-filter preferences
+- /api/profile/edit — PATCH any field except name; housing-switch validated
+- /api/discover — buckets primary/nearby + fallback_message; supports live filter query params
 
 ## User Persona
 - Young Indian professionals & students (22-32) seeking flatmates in major cities

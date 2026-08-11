@@ -73,8 +73,10 @@ export default function Profile() {
           </div>
         </div>
 
-        <Button data-testid="edit-profile-btn" variant="outline" onClick={()=>navigate("/profile-setup")}
+        <Button data-testid="edit-profile-btn" variant="outline" onClick={()=>navigate("/edit-profile")}
                 className="mt-4 w-full h-11 rounded-2xl bg-card">Edit profile</Button>
+        <Button data-testid="manage-photos-btn" variant="ghost" onClick={()=>navigate("/profile-setup")}
+                className="mt-2 w-full h-11 rounded-2xl">Manage photos & prompts</Button>
       </div>
       <BottomNav/>
     </div>

@@ -1,15 +1,11 @@
-"""FlatMate+ Backend - India's flatmate matching app.
-
-Features: JWT + Emergent Google auth, onboarding, liveness, photos (object storage),
-swipe/match algorithm, WebSocket chat.
-"""
+"""FlatMate+ Backend v2 — with face verification, geo radius, non-negotiables, and richer profile."""
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, UploadFile, File, Header, Query, Response, WebSocket, WebSocketDisconnect, Request
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
-import os, logging, uuid, jwt, bcrypt, requests, json
+import os, logging, uuid, jwt, bcrypt, requests, math
 from pathlib import Path
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, EmailStr
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone, timedelta
 
@@ -29,7 +25,7 @@ EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
 app = FastAPI(title="FlatMate+ API")
 api_router = APIRouter(prefix="/api")
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ---------------- Storage ----------------
@@ -47,13 +43,11 @@ def init_storage(force: bool = False):
 def put_object(path: str, data: bytes, content_type: str) -> dict:
     key = init_storage()
     resp = requests.put(f"{STORAGE_URL}/objects/{path}",
-                        headers={"X-Storage-Key": key, "Content-Type": content_type},
-                        data=data, timeout=120)
+                        headers={"X-Storage-Key": key, "Content-Type": content_type}, data=data, timeout=120)
     if resp.status_code == 404:
         key = init_storage(force=True)
         resp = requests.put(f"{STORAGE_URL}/objects/{path}",
-                            headers={"X-Storage-Key": key, "Content-Type": content_type},
-                            data=data, timeout=120)
+                            headers={"X-Storage-Key": key, "Content-Type": content_type}, data=data, timeout=120)
     resp.raise_for_status()
     return resp.json()
 
@@ -78,37 +72,94 @@ class UserLogin(BaseModel):
 
 class OnboardingData(BaseModel):
     age: int
-    gender: str  # male, female, non_binary
-    city: str  # bangalore, mumbai, delhi, etc.
+    gender: str
+    city: str
     locality: str
-    housing_status: str  # have_house, need_house_together, need_house_from_someone
+    home_lat: Optional[float] = None
+    home_lng: Optional[float] = None
+    radius_km: int = 5
+    office_locality: Optional[str] = ""
+    office_lat: Optional[float] = None
+    office_lng: Optional[float] = None
+    housing_status: str
     budget_min: int
     budget_max: int
     move_in_date: str
-    flatmate_gender_pref: str  # male, female, any
-    work_profile: str  # student, working_professional, freelancer, business
+    flatmate_gender_pref: str
+    work_profile: str
     company_or_college: Optional[str] = ""
-    food_pref: str  # veg, non_veg, eggetarian, vegan
-    cooks_at_home: str  # daily, sometimes, rarely, never
-    cleanliness: int  # 1-5
-    sleep_schedule: str  # early_bird, night_owl, flexible
-    social_level: str  # introvert, ambivert, extrovert
-    drinking: str  # yes, no, occasionally
-    smoking: str  # yes, no, occasionally
+    work_schedule: str = "hybrid"  # wfh, wfo, hybrid
+    food_pref: str
+    cooks_at_home: str
+    cleanliness: int
+    sleep_schedule: str
+    social_level: str
+    drinking: str
+    smoking: str
     pets_ok: bool
-    guests_freq: str  # often, sometimes, rarely
+    guests_freq: str
+    male_guests_ok: bool = True
+    family_visits_ok: bool = True
+    hosts_parties: str = "sometimes"  # rarely, sometimes, often
     music_ok: bool
     languages: List[str] = []
     interests: List[str] = []
+    # Flat-owner only
+    flat_preferences: List[str] = []
+
+class NonNegotiablesIn(BaseModel):
+    non_negotiables: List[str] = []  # keys: food_pref, smoking, drinking, cleanliness, pets_ok, male_guests_ok, family_visits_ok, hosts_parties, sleep_schedule, budget, radius
 
 class ProfileUpdate(BaseModel):
-    bio: Optional[str] = ""
-    prompts: List[Dict[str, str]] = []  # [{q, a}]
-    photos: List[str] = []  # list of storage paths
+    bio: Optional[str] = None
+    prompts: Optional[List[Dict[str, str]]] = None
+    photos: Optional[List[str]] = None       # user photos
+    flat_photos: Optional[List[str]] = None  # only relevant for have_house
+    main_photo_verified: Optional[bool] = None
+    face_descriptor_main: Optional[List[float]] = None  # descriptor of main photo
+
+class EditProfileIn(BaseModel):
+    # All editable fields except name
+    age: Optional[int] = None
+    gender: Optional[str] = None
+    city: Optional[str] = None
+    locality: Optional[str] = None
+    home_lat: Optional[float] = None
+    home_lng: Optional[float] = None
+    radius_km: Optional[int] = None
+    office_locality: Optional[str] = None
+    office_lat: Optional[float] = None
+    office_lng: Optional[float] = None
+    housing_status: Optional[str] = None
+    budget_min: Optional[int] = None
+    budget_max: Optional[int] = None
+    move_in_date: Optional[str] = None
+    flatmate_gender_pref: Optional[str] = None
+    work_profile: Optional[str] = None
+    company_or_college: Optional[str] = None
+    work_schedule: Optional[str] = None
+    food_pref: Optional[str] = None
+    cooks_at_home: Optional[str] = None
+    cleanliness: Optional[int] = None
+    sleep_schedule: Optional[str] = None
+    social_level: Optional[str] = None
+    drinking: Optional[str] = None
+    smoking: Optional[str] = None
+    pets_ok: Optional[bool] = None
+    guests_freq: Optional[str] = None
+    male_guests_ok: Optional[bool] = None
+    family_visits_ok: Optional[bool] = None
+    hosts_parties: Optional[str] = None
+    music_ok: Optional[bool] = None
+    languages: Optional[List[str]] = None
+    interests: Optional[List[str]] = None
+    flat_preferences: Optional[List[str]] = None
+    bio: Optional[str] = None
+    prompts: Optional[List[Dict[str, str]]] = None
 
 class SwipeIn(BaseModel):
     target_user_id: str
-    direction: str  # like or pass
+    direction: str
 
 class MessageIn(BaseModel):
     match_id: str
@@ -136,8 +187,6 @@ async def get_current_user(request: Request, authorization: Optional[str] = Head
         token = request.cookies.get("session_token")
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
-
-    # try JWT
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
         user = await db.users.find_one({"user_id": payload["user_id"]}, {"_id": 0})
@@ -145,8 +194,6 @@ async def get_current_user(request: Request, authorization: Optional[str] = Head
             return user
     except Exception:
         pass
-
-    # try session (Emergent auth)
     session = await db.user_sessions.find_one({"session_token": token}, {"_id": 0})
     if not session:
         raise HTTPException(status_code=401, detail="Invalid token")
@@ -163,7 +210,7 @@ async def get_current_user(request: Request, authorization: Optional[str] = Head
     return user
 
 def user_public(u: dict) -> dict:
-    return {k: v for k, v in u.items() if k not in ("password_hash", "_id")}
+    return {k: v for k, v in u.items() if k not in ("password_hash", "_id", "face_descriptor_selfie")}
 
 # ---------------- Auth routes ----------------
 @api_router.post("/auth/register")
@@ -173,13 +220,10 @@ async def register(data: UserRegister):
         raise HTTPException(status_code=400, detail="Email already registered")
     user_id = f"user_{uuid.uuid4().hex[:12]}"
     doc = {
-        "user_id": user_id,
-        "email": data.email,
-        "name": data.name,
+        "user_id": user_id, "email": data.email, "name": data.name,
         "password_hash": hash_password(data.password),
-        "onboarding_done": False,
-        "liveness_verified": False,
-        "profile_complete": False,
+        "onboarding_done": False, "liveness_verified": False, "profile_complete": False,
+        "main_photo_verified": False,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.users.insert_one(doc)
@@ -200,38 +244,25 @@ async def process_session(request: Request, response: Response):
     session_id = body.get("session_id")
     if not session_id:
         raise HTTPException(status_code=400, detail="session_id required")
-    resp = requests.get(
-        "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data",
-        headers={"X-Session-ID": session_id}, timeout=30
-    )
+    resp = requests.get("https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data",
+                        headers={"X-Session-ID": session_id}, timeout=30)
     if resp.status_code != 200:
         raise HTTPException(status_code=401, detail="Invalid session")
     data = resp.json()
     email = data["email"]
-
     user = await db.users.find_one({"email": email}, {"_id": 0})
     if not user:
         user_id = f"user_{uuid.uuid4().hex[:12]}"
-        user = {
-            "user_id": user_id,
-            "email": email,
-            "name": data.get("name") or email.split("@")[0],
-            "picture": data.get("picture"),
-            "onboarding_done": False,
-            "liveness_verified": False,
-            "profile_complete": False,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        }
+        user = {"user_id": user_id, "email": email, "name": data.get("name") or email.split("@")[0],
+                "picture": data.get("picture"), "onboarding_done": False, "liveness_verified": False,
+                "profile_complete": False, "main_photo_verified": False,
+                "created_at": datetime.now(timezone.utc).isoformat()}
         await db.users.insert_one(user)
-
     session_token = data["session_token"]
     expires_at = datetime.now(timezone.utc) + timedelta(days=7)
-    await db.user_sessions.insert_one({
-        "user_id": user["user_id"],
-        "session_token": session_token,
-        "expires_at": expires_at.isoformat(),
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    })
+    await db.user_sessions.insert_one({"user_id": user["user_id"], "session_token": session_token,
+                                       "expires_at": expires_at.isoformat(),
+                                       "created_at": datetime.now(timezone.utc).isoformat()})
     response.set_cookie("session_token", session_token, path="/", secure=True, samesite="none", httponly=True, max_age=7*24*3600)
     return {"user": user_public(user), "token": session_token}
 
@@ -247,7 +278,7 @@ async def logout(request: Request, response: Response):
     response.delete_cookie("session_token", path="/")
     return {"ok": True}
 
-# ---------------- Onboarding & profile ----------------
+# ---------------- Onboarding / Liveness / Non-negotiables ----------------
 @api_router.put("/onboarding")
 async def save_onboarding(data: OnboardingData, user: dict = Depends(get_current_user)):
     update = data.model_dump()
@@ -257,18 +288,19 @@ async def save_onboarding(data: OnboardingData, user: dict = Depends(get_current
 
 @api_router.post("/liveness/verify")
 async def verify_liveness(body: Dict[str, Any], user: dict = Depends(get_current_user)):
-    # Client sends {steps_completed: N, selfie_base64: str}
     steps = int(body.get("steps_completed", 0))
     if steps < 3:
         raise HTTPException(status_code=400, detail="Liveness incomplete")
-    # store selfie in object storage (from base64)
+    face_desc = body.get("face_descriptor")  # list of 128 floats
+    if not face_desc or not isinstance(face_desc, list) or len(face_desc) < 64:
+        raise HTTPException(status_code=400, detail="No face detected in selfie — please retry")
     selfie_path = None
     selfie_b64 = body.get("selfie_base64", "")
     if selfie_b64:
         import base64
-        header, _, b64data = selfie_b64.partition(",")
+        _, _, b64data = selfie_b64.partition(",")
         try:
-            data_bytes = base64.b64decode(b64data or header)
+            data_bytes = base64.b64decode(b64data or selfie_b64)
         except Exception:
             data_bytes = b""
         if data_bytes:
@@ -279,13 +311,84 @@ async def verify_liveness(body: Dict[str, Any], user: dict = Depends(get_current
                 logger.error(f"Selfie upload failed: {e}")
                 selfie_path = None
     await db.users.update_one({"user_id": user["user_id"]},
-                              {"$set": {"liveness_verified": True, "selfie_path": selfie_path}})
+                              {"$set": {"liveness_verified": True, "selfie_path": selfie_path,
+                                        "face_descriptor_selfie": face_desc}})
     return {"ok": True, "selfie_path": selfie_path}
+
+@api_router.put("/non-negotiables")
+async def save_non_negotiables(data: NonNegotiablesIn, user: dict = Depends(get_current_user)):
+    await db.users.update_one({"user_id": user["user_id"]},
+                              {"$set": {"non_negotiables": data.non_negotiables}})
+    return {"ok": True}
+
+# ---------------- Profile / Uploads ----------------
+def _cosine_sim(a: List[float], b: List[float]) -> float:
+    if not a or not b or len(a) != len(b):
+        return 0.0
+    dot = sum(x*y for x, y in zip(a, b))
+    na = math.sqrt(sum(x*x for x in a)); nb = math.sqrt(sum(y*y for y in b))
+    return dot / (na*nb) if na and nb else 0.0
+
+def _euclidean(a: List[float], b: List[float]) -> float:
+    if not a or not b or len(a) != len(b):
+        return 999.0
+    return math.sqrt(sum((x-y)**2 for x, y in zip(a, b)))
 
 @api_router.put("/profile")
 async def update_profile(data: ProfileUpdate, user: dict = Depends(get_current_user)):
     upd = {k: v for k, v in data.model_dump().items() if v is not None}
-    upd["profile_complete"] = bool((data.photos or []) and (data.prompts or []))
+    photos = upd.get("photos", user.get("photos", []) or [])
+    flat_photos = upd.get("flat_photos", user.get("flat_photos", []) or [])
+    housing = user.get("housing_status")
+
+    # Face verification of MAIN photo against liveness selfie
+    prev_main = (user.get("photos") or [None])[0]
+    new_main = (photos or [None])[0]
+    face_desc_main = upd.pop("face_descriptor_main", None)
+
+    if new_main and new_main != prev_main:
+        selfie_desc = user.get("face_descriptor_selfie")
+        if not selfie_desc:
+            raise HTTPException(status_code=400, detail="Please complete the liveness check first")
+        if not face_desc_main or not isinstance(face_desc_main, list) or len(face_desc_main) < 64:
+            raise HTTPException(status_code=400, detail="Your main photo must show a clear single human face")
+        dist = _euclidean(selfie_desc, face_desc_main)
+        # face-api recommends threshold ~0.6 for match
+        if dist > 0.6:
+            upd["main_photo_verified"] = False
+            raise HTTPException(status_code=400,
+                                detail=f"Main photo does not match your live selfie (distance {dist:.2f}). Please upload a photo of yourself.")
+        upd["main_photo_verified"] = True
+        upd["face_descriptor_main"] = face_desc_main
+    elif not new_main:
+        upd["main_photo_verified"] = False
+
+    # Housing gate: if user has_house, require flat_photos
+    if housing == "have_house":
+        if len(flat_photos) < 1:
+            raise HTTPException(status_code=400, detail="Please add at least 1 flat photo")
+
+    has_photos = bool(photos)
+    has_prompts = bool(upd.get("prompts") or user.get("prompts"))
+    housing_ok = housing != "have_house" or bool(flat_photos)
+    upd["profile_complete"] = has_photos and has_prompts and housing_ok
+
+    await db.users.update_one({"user_id": user["user_id"]}, {"$set": upd})
+    updated = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
+    return user_public(updated)
+
+@api_router.patch("/profile/edit")
+async def edit_profile(data: EditProfileIn, user: dict = Depends(get_current_user)):
+    upd = {k: v for k, v in data.model_dump().items() if v is not None}
+    if not upd:
+        return user_public(user)
+    # Housing gate: if switching to have_house, ensure flat photos exist
+    new_housing = upd.get("housing_status", user.get("housing_status"))
+    if new_housing == "have_house":
+        flat_photos = user.get("flat_photos") or []
+        if len(flat_photos) < 1:
+            raise HTTPException(status_code=400,
+                                detail="Please add at least 1 flat photo from 'Manage photos' before switching to 'I have a house'")
     await db.users.update_one({"user_id": user["user_id"]}, {"$set": upd})
     updated = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
     return user_public(updated)
@@ -302,22 +405,17 @@ async def upload_photo(file: UploadFile = File(...), user: dict = Depends(get_cu
     content_type = file.content_type or f"image/{'jpeg' if ext in ('jpg','jpeg') else ext}"
     result = put_object(path, data, content_type)
     await db.files.insert_one({
-        "id": str(uuid.uuid4()),
-        "user_id": user["user_id"],
-        "storage_path": result["path"],
-        "content_type": content_type,
-        "size": result["size"],
-        "is_deleted": False,
+        "id": str(uuid.uuid4()), "user_id": user["user_id"],
+        "storage_path": result["path"], "content_type": content_type,
+        "size": result["size"], "is_deleted": False,
         "created_at": datetime.now(timezone.utc).isoformat(),
     })
     return {"path": result["path"]}
 
 @api_router.get("/files/{path:path}")
 async def serve_file(path: str):
-    # public read for profile photos (paths contain uuid, hard to guess)
     record = await db.files.find_one({"storage_path": path, "is_deleted": False}, {"_id": 0})
     if not record:
-        # allow selfie (not in files collection)
         user = await db.users.find_one({"selfie_path": path}, {"_id": 0})
         if not user:
             raise HTTPException(status_code=404, detail="Not found")
@@ -327,143 +425,262 @@ async def serve_file(path: str):
         raise HTTPException(status_code=404, detail="Object missing")
     return Response(content=data, media_type=(record or {}).get("content_type", ct))
 
+# ---------------- Nominatim proxy (avoid CORS + rate-limit headers) ----------------
+@api_router.get("/geo/search")
+async def geo_search(q: str = Query(..., min_length=3)):
+    try:
+        resp = requests.get(
+            "https://nominatim.openstreetmap.org/search",
+            params={"q": f"{q}, India", "format": "json", "addressdetails": 1, "limit": 6, "countrycodes": "in"},
+            headers={"User-Agent": "FlatMatePlus/1.0"}, timeout=8,
+        )
+        if resp.status_code != 200:
+            return []
+        raw = resp.json()
+    except Exception as e:
+        logger.warning(f"Nominatim failed: {e}")
+        return []
+    out = []
+    for r in raw:
+        addr = r.get("address", {})
+        name = r.get("display_name", "")
+        primary = (addr.get("suburb") or addr.get("neighbourhood") or addr.get("village")
+                   or addr.get("town") or addr.get("city_district") or addr.get("city") or r.get("name") or name.split(",")[0])
+        city = addr.get("city") or addr.get("town") or addr.get("state_district") or addr.get("state") or ""
+        out.append({
+            "display_name": name, "primary": primary, "city": city,
+            "lat": float(r["lat"]), "lng": float(r["lon"]),
+        })
+    return out
+
 # ---------------- Matching ----------------
-def compute_match_score(a: dict, b: dict) -> int:
-    """Return a match score out of 100 between users a and b."""
+def haversine_km(lat1, lng1, lat2, lng2):
+    if None in (lat1, lng1, lat2, lng2):
+        return None
+    R = 6371.0
+    from math import radians, sin, cos, asin, sqrt
+    dlat = radians(lat2-lat1); dlng = radians(lng2-lng1)
+    a = sin(dlat/2)**2 + cos(radians(lat1))*cos(radians(lat2))*sin(dlng/2)**2
+    return 2*R*asin(sqrt(a))
+
+MATCH_HIGHLIGHT_LABELS = {
+    "same_locality": "Same neighbourhood",
+    "close_by": "Nearby",
+    "housing_complementary": "Housing needs match",
+    "budget_overlap": "Budget aligns",
+    "food_same": "Same food vibe",
+    "clean_same": "Similar cleanliness",
+    "sleep_same": "Same sleep schedule",
+    "social_same": "Same social energy",
+    "smoking_same": "Smoking match",
+    "drinking_same": "Drinking match",
+    "pets_same": "Both pet-friendly" ,
+    "guests_align": "Guest habits align",
+    "work_schedule_same": "Same work schedule",
+    "interests_shared": "Shared interests",
+    "languages_shared": "Same language",
+}
+
+def compute_match(a: dict, b: dict) -> Dict[str, Any]:
+    """Returns dict with score(0-100), highlights list, distance_km, hard_fail:bool, hard_reasons:list."""
+    highlights = []
     score = 0
-    reasons = 0
+    non_neg = set(a.get("non_negotiables") or [])
 
-    # City must match (hard filter is done in discover; here just award)
-    if a.get("city") and a.get("city") == b.get("city"):
-        score += 20
-        reasons += 1
+    def add(cond, key, points, mult_if_nn=2.0):
+        nonlocal score
+        if cond:
+            pts = int(points * (mult_if_nn if key in non_neg else 1))
+            score += pts
+            highlights.append(key)
 
-    # Housing complementary
+    # distance
+    dist = haversine_km(a.get("home_lat"), a.get("home_lng"), b.get("home_lat"), b.get("home_lng"))
+
+    same_city = a.get("city") and a.get("city") == b.get("city")
+    same_locality = a.get("locality") and a.get("locality").strip().lower() == (b.get("locality") or "").strip().lower()
+
+    add(same_locality, "same_locality", 15)
+    if dist is not None and dist <= max(a.get("radius_km", 5), b.get("radius_km", 5)):
+        if not same_locality:
+            add(True, "close_by", 10)
+
+    # housing complementary
     ah, bh = a.get("housing_status"), b.get("housing_status")
-    if ah and bh:
-        # complementary pairs
-        good_pairs = {("have_house", "need_house_from_someone"),
-                      ("need_house_from_someone", "have_house"),
-                      ("need_house_together", "need_house_together")}
-        if (ah, bh) in good_pairs:
-            score += 20
-        elif ah == bh and ah != "need_house_together":
-            score += 5
-        else:
-            score += 2
+    good_pairs = {("have_house", "need_house_from_someone"), ("need_house_from_someone", "have_house"),
+                  ("need_house_together", "need_house_together")}
+    add((ah, bh) in good_pairs, "housing_complementary", 15)
 
-    # Gender preference (mutual)
-    def gender_ok(x, y):
-        pref = x.get("flatmate_gender_pref", "any")
-        return pref == "any" or pref == y.get("gender")
-    if gender_ok(a, b) and gender_ok(b, a):
-        score += 10
-
-    # Budget overlap
+    # budget overlap
     a_min, a_max = a.get("budget_min", 0), a.get("budget_max", 999999)
     b_min, b_max = b.get("budget_min", 0), b.get("budget_max", 999999)
-    if a_max >= b_min and b_max >= a_min:
-        score += 10
+    add(a_max >= b_min and b_max >= a_min, "budget_overlap", 10)
 
-    # Food pref
-    if a.get("food_pref") == b.get("food_pref"):
-        score += 8
-    elif {a.get("food_pref"), b.get("food_pref")} <= {"veg", "eggetarian"}:
-        score += 5
-
-    # Cleanliness closeness (1-5 scale)
+    add(a.get("food_pref") == b.get("food_pref") and a.get("food_pref"), "food_same", 8)
     ca, cb = a.get("cleanliness"), b.get("cleanliness")
-    if isinstance(ca, int) and isinstance(cb, int):
-        score += max(0, 10 - abs(ca - cb) * 3)
+    add(isinstance(ca, int) and isinstance(cb, int) and abs(ca-cb) <= 1, "clean_same", 8)
+    add(a.get("sleep_schedule") == b.get("sleep_schedule") and a.get("sleep_schedule"), "sleep_same", 6)
+    add(a.get("social_level") == b.get("social_level") and a.get("social_level"), "social_same", 5)
+    add(a.get("smoking") == b.get("smoking") and a.get("smoking"), "smoking_same", 4)
+    add(a.get("drinking") == b.get("drinking") and a.get("drinking"), "drinking_same", 4)
+    add(a.get("pets_ok") == b.get("pets_ok"), "pets_same", 3)
+    add(a.get("guests_freq") == b.get("guests_freq") and a.get("guests_freq"), "guests_align", 3)
+    add(a.get("work_schedule") == b.get("work_schedule") and a.get("work_schedule"), "work_schedule_same", 4)
 
-    # Sleep schedule
-    if a.get("sleep_schedule") == b.get("sleep_schedule") or "flexible" in (a.get("sleep_schedule"), b.get("sleep_schedule")):
-        score += 6
+    ai = set(a.get("interests") or []); bi = set(b.get("interests") or [])
+    overlap = len(ai & bi)
+    add(overlap >= 2, "interests_shared", min(6, overlap*2))
+    la = set(a.get("languages") or []); lb = set(b.get("languages") or [])
+    add(bool(la & lb), "languages_shared", 3)
 
-    # Social level
-    if a.get("social_level") == b.get("social_level"):
-        score += 5
+    score = min(100, score)
 
-    # Habits
-    for key in ("drinking", "smoking"):
-        if a.get(key) == b.get(key):
-            score += 3
+    return {"score": score, "highlights": highlights, "distance_km": dist}
 
-    # Pets
-    if a.get("pets_ok") == b.get("pets_ok"):
-        score += 3
+def gender_ok(x, y):
+    pref = x.get("flatmate_gender_pref", "any")
+    return pref == "any" or pref == y.get("gender")
 
-    # Interest overlap
-    ai = set(a.get("interests") or [])
-    bi = set(b.get("interests") or [])
-    if ai and bi:
-        overlap = len(ai & bi)
-        score += min(6, overlap * 2)
-
-    return min(100, score)
+def passes_hard_filters(a: dict, b: dict, filters: Dict[str, Any]) -> bool:
+    """User-side live filters passed via query params override defaults."""
+    non_neg = set(a.get("non_negotiables") or [])
+    # Enforce non-negotiables strictly
+    if "food_pref" in non_neg and a.get("food_pref") != b.get("food_pref"):
+        return False
+    if "smoking" in non_neg and a.get("smoking") != b.get("smoking"):
+        return False
+    if "drinking" in non_neg and a.get("drinking") != b.get("drinking"):
+        return False
+    if "pets_ok" in non_neg and a.get("pets_ok") != b.get("pets_ok"):
+        return False
+    if "male_guests_ok" in non_neg and a.get("male_guests_ok") != b.get("male_guests_ok"):
+        return False
+    if "family_visits_ok" in non_neg and a.get("family_visits_ok") != b.get("family_visits_ok"):
+        return False
+    if "cleanliness" in non_neg:
+        try:
+            if abs(int(a.get("cleanliness") or 3) - int(b.get("cleanliness") or 3)) > 1:
+                return False
+        except Exception: pass
+    # Live filters
+    if filters.get("food") and b.get("food_pref") not in filters["food"]:
+        return False
+    if filters.get("smoking") and b.get("smoking") not in filters["smoking"]:
+        return False
+    if filters.get("drinking") and b.get("drinking") not in filters["drinking"]:
+        return False
+    if filters.get("housing") and b.get("housing_status") not in filters["housing"]:
+        return False
+    if filters.get("budget_max") is not None and (b.get("budget_min") or 0) > filters["budget_max"]:
+        return False
+    if filters.get("budget_min") is not None and (b.get("budget_max") or 999999) < filters["budget_min"]:
+        return False
+    return True
 
 @api_router.get("/discover")
-async def discover(user: dict = Depends(get_current_user)):
+async def discover(
+    user: dict = Depends(get_current_user),
+    radius_km: Optional[int] = None,
+    food: Optional[str] = None,  # comma list
+    smoking: Optional[str] = None,
+    drinking: Optional[str] = None,
+    housing: Optional[str] = None,
+    budget_min: Optional[int] = None,
+    budget_max: Optional[int] = None,
+):
     if not user.get("onboarding_done"):
         raise HTTPException(status_code=400, detail="Complete onboarding first")
 
-    # exclude self + already swiped
-    swiped = await db.swipes.find({"user_id": user["user_id"]}, {"_id": 0, "target_user_id": 1}).to_list(1000)
+    swiped = await db.swipes.find({"user_id": user["user_id"]}, {"_id": 0, "target_user_id": 1}).to_list(5000)
     exclude_ids = {s["target_user_id"] for s in swiped}
     exclude_ids.add(user["user_id"])
 
-    # city filter + onboarding_done
-    q = {"user_id": {"$nin": list(exclude_ids)}, "onboarding_done": True}
+    q = {"user_id": {"$nin": list(exclude_ids)}, "onboarding_done": True, "profile_complete": True}
     if user.get("city"):
         q["city"] = user["city"]
-    candidates = await db.users.find(q, {"_id": 0, "password_hash": 0}).to_list(200)
+    candidates = await db.users.find(q, {"_id": 0, "password_hash": 0, "face_descriptor_selfie": 0}).to_list(500)
 
-    # gender preference filter (mutual)
-    def gender_ok(x, y):
-        pref = x.get("flatmate_gender_pref", "any")
-        return pref == "any" or pref == y.get("gender")
+    filters = {
+        "food": [x for x in (food or "").split(",") if x] or None,
+        "smoking": [x for x in (smoking or "").split(",") if x] or None,
+        "drinking": [x for x in (drinking or "").split(",") if x] or None,
+        "housing": [x for x in (housing or "").split(",") if x] or None,
+        "budget_min": budget_min, "budget_max": budget_max,
+    }
+    r_km = radius_km if radius_km is not None else user.get("radius_km", 5)
 
-    filtered = [c for c in candidates if gender_ok(user, c) and gender_ok(c, user)]
-    scored = [{"user": c, "score": compute_match_score(user, c)} for c in filtered]
-    scored.sort(key=lambda x: -x["score"])
-    return scored[:50]
+    # score all valid candidates
+    scored = []
+    for c in candidates:
+        if not gender_ok(user, c) or not gender_ok(c, user):
+            continue
+        if not passes_hard_filters(user, c, filters):
+            continue
+        m = compute_match(user, c)
+        scored.append({"user": c, "score": m["score"], "highlights": m["highlights"], "distance_km": m["distance_km"]})
+
+    # Same-locality bucket first
+    same_locality = (user.get("locality") or "").strip().lower()
+    within_radius, outside_radius = [], []
+    same_loc_bucket = []
+    for s in scored:
+        loc = (s["user"].get("locality") or "").strip().lower()
+        d = s["distance_km"]
+        if same_locality and loc == same_locality:
+            same_loc_bucket.append(s)
+        elif d is not None and d <= r_km:
+            within_radius.append(s)
+        else:
+            outside_radius.append(s)
+
+    same_loc_bucket.sort(key=lambda x: -x["score"])
+    within_radius.sort(key=lambda x: (x["distance_km"] if x["distance_km"] is not None else 9999, -x["score"]))
+    outside_radius.sort(key=lambda x: (x["distance_km"] if x["distance_km"] is not None else 9999, -x["score"]))
+
+    primary = same_loc_bucket + within_radius
+    nearby = outside_radius[:20]
+    fallback_message = None
+    if not primary and nearby:
+        nearest = nearby[0]
+        d = nearest.get("distance_km")
+        loc = nearest["user"].get("locality") or nearest["user"].get("city")
+        fallback_message = f"No one in {user.get('locality') or 'your area'} yet — showing folks from {loc}" + (f" ({d:.1f}km away)" if d else "")
+
+    return {
+        "primary": primary[:50],
+        "nearby": nearby if primary else nearby[:50],
+        "fallback_message": fallback_message,
+    }
 
 @api_router.post("/swipe")
 async def swipe(data: SwipeIn, user: dict = Depends(get_current_user)):
     if data.direction not in ("like", "pass"):
         raise HTTPException(status_code=400, detail="Invalid direction")
-    # store
     await db.swipes.update_one(
         {"user_id": user["user_id"], "target_user_id": data.target_user_id},
         {"$set": {"direction": data.direction, "created_at": datetime.now(timezone.utc).isoformat()}},
-        upsert=True
+        upsert=True,
     )
     if data.direction == "pass":
         return {"matched": False}
-    # check mutual like
-    reverse = await db.swipes.find_one({
-        "user_id": data.target_user_id, "target_user_id": user["user_id"], "direction": "like"
-    }, {"_id": 0})
+    reverse = await db.swipes.find_one(
+        {"user_id": data.target_user_id, "target_user_id": user["user_id"], "direction": "like"}, {"_id": 0}
+    )
     if not reverse:
         return {"matched": False}
-    # create match
-    match_id = f"match_{uuid.uuid4().hex[:12]}"
     other = await db.users.find_one({"user_id": data.target_user_id}, {"_id": 0, "password_hash": 0})
-    score = compute_match_score(user, other or {})
-    existing = await db.matches.find_one({
-        "user_ids": {"$all": [user["user_id"], data.target_user_id]}
-    }, {"_id": 0})
+    m = compute_match(user, other or {})
+    existing = await db.matches.find_one({"user_ids": {"$all": [user["user_id"], data.target_user_id]}}, {"_id": 0})
     if existing:
-        return {"matched": True, "match": existing, "other": user_public(other or {})}
-    doc = {
-        "match_id": match_id,
-        "user_ids": [user["user_id"], data.target_user_id],
-        "score": score,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
+        return {"matched": True, "match": existing, "other": user_public(other or {}),
+                "highlights": m["highlights"]}
+    match_id = f"match_{uuid.uuid4().hex[:12]}"
+    doc = {"match_id": match_id, "user_ids": [user["user_id"], data.target_user_id],
+           "score": m["score"], "highlights": m["highlights"],
+           "created_at": datetime.now(timezone.utc).isoformat()}
     await db.matches.insert_one(doc)
     doc.pop("_id", None)
-    return {"matched": True, "match": doc, "other": user_public(other or {})}
+    return {"matched": True, "match": doc, "other": user_public(other or {}), "highlights": m["highlights"]}
 
 @api_router.get("/matches")
 async def list_matches(user: dict = Depends(get_current_user)):
@@ -471,7 +688,7 @@ async def list_matches(user: dict = Depends(get_current_user)):
     out = []
     for m in ms:
         other_id = [u for u in m["user_ids"] if u != user["user_id"]][0]
-        other = await db.users.find_one({"user_id": other_id}, {"_id": 0, "password_hash": 0})
+        other = await db.users.find_one({"user_id": other_id}, {"_id": 0, "password_hash": 0, "face_descriptor_selfie": 0})
         last_msg = await db.messages.find_one({"match_id": m["match_id"]}, {"_id": 0}, sort=[("created_at", -1)])
         out.append({"match": m, "other": user_public(other or {}), "last_message": last_msg})
     return out
@@ -489,64 +706,49 @@ async def send_message(data: MessageIn, user: dict = Depends(get_current_user)):
     match = await db.matches.find_one({"match_id": data.match_id, "user_ids": user["user_id"]}, {"_id": 0})
     if not match:
         raise HTTPException(status_code=404, detail="Match not found")
-    msg = {
-        "message_id": f"msg_{uuid.uuid4().hex[:12]}",
-        "match_id": data.match_id,
-        "sender_id": user["user_id"],
-        "text": data.text,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
+    msg = {"message_id": f"msg_{uuid.uuid4().hex[:12]}", "match_id": data.match_id,
+           "sender_id": user["user_id"], "text": data.text,
+           "created_at": datetime.now(timezone.utc).isoformat()}
     await db.messages.insert_one(msg)
     msg.pop("_id", None)
-    # broadcast via ws
     other_id = [u for u in match["user_ids"] if u != user["user_id"]][0]
     await manager.push(other_id, {"type": "message", "message": msg})
     return msg
 
-# ---------------- WebSocket chat ----------------
+# ---------------- WebSocket ----------------
 class ConnectionManager:
     def __init__(self):
         self.active: Dict[str, List[WebSocket]] = {}
-
     async def connect(self, user_id: str, ws: WebSocket):
         await ws.accept()
         self.active.setdefault(user_id, []).append(ws)
-
     def disconnect(self, user_id: str, ws: WebSocket):
         if user_id in self.active:
             self.active[user_id] = [w for w in self.active[user_id] if w is not ws]
-
     async def push(self, user_id: str, data: dict):
         for ws in list(self.active.get(user_id, [])):
-            try:
-                await ws.send_json(data)
-            except Exception:
-                pass
+            try: await ws.send_json(data)
+            except Exception: pass
 
 manager = ConnectionManager()
 
 @app.websocket("/api/ws/{user_id}")
 async def ws_endpoint(ws: WebSocket, user_id: str, token: str = Query(...)):
-    # verify token
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
         if payload["user_id"] != user_id:
-            await ws.close(code=1008)
-            return
+            await ws.close(code=1008); return
     except Exception:
-        # try session
         session = await db.user_sessions.find_one({"session_token": token}, {"_id": 0})
         if not session or session["user_id"] != user_id:
-            await ws.close(code=1008)
-            return
+            await ws.close(code=1008); return
     await manager.connect(user_id, ws)
     try:
         while True:
-            await ws.receive_text()  # keep-alive; sending is via HTTP endpoint
+            await ws.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(user_id, ws)
 
-# ---------------- Basic ----------------
 @api_router.get("/")
 async def root():
     return {"app": "FlatMate+", "status": "ok"}
@@ -554,11 +756,9 @@ async def root():
 app.include_router(api_router)
 
 app.add_middleware(
-    CORSMiddleware,
-    allow_credentials=True,
+    CORSMiddleware, allow_credentials=True,
     allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"], allow_headers=["*"],
 )
 
 @app.on_event("startup")
