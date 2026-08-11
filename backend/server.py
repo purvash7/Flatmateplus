@@ -416,14 +416,15 @@ async def upload_photo(file: UploadFile = File(...), user: dict = Depends(get_cu
 async def serve_file(path: str):
     record = await db.files.find_one({"storage_path": path, "is_deleted": False}, {"_id": 0})
     if not record:
-        user = await db.users.find_one({"selfie_path": path}, {"_id": 0})
-        if not user:
+        selfie_user = await db.users.find_one({"selfie_path": path}, {"_id": 0})
+        if not selfie_user:
             raise HTTPException(status_code=404, detail="Not found")
     try:
         data, ct = get_object(path)
     except Exception:
         raise HTTPException(status_code=404, detail="Object missing")
-    return Response(content=data, media_type=(record or {}).get("content_type", ct))
+    media_type = (record or {}).get("content_type") or ct or "application/octet-stream"
+    return Response(content=data, media_type=media_type)
 
 # ---------------- Nominatim proxy (avoid CORS + rate-limit headers) ----------------
 @api_router.get("/geo/search")

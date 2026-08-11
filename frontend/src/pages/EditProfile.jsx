@@ -51,7 +51,9 @@ export default function EditProfile() {
     if (!user) return;
     setF({ ...user });
     setNN(user.non_negotiables || []);
-  }, [user]);
+    // Only re-run when the user's user_id changes (i.e. new user loaded), not on every field edit
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.user_id]);
 
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
   const toggle = (k, v) => setF(p => ({ ...p, [k]: (p[k]||[]).includes(v) ? p[k].filter(x=>x!==v) : [...(p[k]||[]), v] }));

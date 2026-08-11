@@ -8,7 +8,10 @@ export default function Matches() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
-    api.get("/matches").then(({ data }) => setItems(data)).finally(() => setLoading(false));
+    api.get("/matches")
+      .then(({ data }) => setItems(data))
+      .catch((e) => { console.error("Failed to load matches", e); })
+      .finally(() => setLoading(false));
   }, []);
 
   return (

@@ -1,10 +1,31 @@
 import { useEffect, useRef, useState } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { api, fileUrl, BACKEND_URL } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 import { ArrowLeft, Send, Sparkles } from "lucide-react";
+
+function Avatar({ user }) {
+  const [broken, setBroken] = useState(false);
+  const photo = user?.photos?.[0];
+  const initial = user?.name?.[0] || "?";
+  if (photo && !broken) {
+    return (
+      <img
+        src={fileUrl(photo)} alt={user?.name}
+        onError={() => setBroken(true)}
+        className="w-10 h-10 rounded-full object-cover"
+      />
+    );
+  }
+  return (
+    <div className="w-10 h-10 rounded-full grid place-items-center font-display font-bold text-primary bg-secondary">
+      {initial}
+    </div>
+  );
+}
 
 export default function Chat() {
   const { matchId } = useParams();
@@ -18,20 +39,29 @@ export default function Chat() {
   const wsRef = useRef();
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
-      const { data: matches } = await api.get("/matches");
-      const m = matches.find(x => x.match.match_id === matchId);
-      if (!m) return navigate("/matches");
-      setOther(m.other); setScore(m.match.score);
-      const { data: messages } = await api.get(`/messages/${matchId}`);
-      setMsgs(messages);
+      try {
+        const { data: matches } = await api.get("/matches");
+        if (cancelled) return;
+        const m = matches.find((x) => x.match.match_id === matchId);
+        if (!m) { navigate("/matches"); return; }
+        setOther(m.other);
+        setScore(m.match.score);
+        const { data: messages } = await api.get(`/messages/${matchId}`);
+        if (!cancelled) setMsgs(messages);
+      } catch (e) {
+        console.error("Failed to load chat", e);
+        toast.error("Couldn't load conversation");
+      }
     })();
+    return () => { cancelled = true; };
   }, [matchId, navigate]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) return undefined;
     const token = localStorage.getItem("fm_token");
-    if (!token) return;
+    if (!token) return undefined;
     const wsUrl = BACKEND_URL.replace(/^http/, "ws") + `/api/ws/${user.user_id}?token=${token}`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
@@ -39,11 +69,13 @@ export default function Chat() {
       try {
         const d = JSON.parse(ev.data);
         if (d.type === "message" && d.message.match_id === matchId) {
-          setMsgs(m => [...m, d.message]);
+          setMsgs((m) => [...m, d.message]);
         }
-      } catch {}
+      } catch (err) {
+        console.error("WS parse error", err);
+      }
     };
-    ws.onerror = () => {};
+    ws.onerror = (err) => { console.error("WS error", err); };
     return () => ws.close();
   }, [user, matchId]);
 
@@ -56,21 +88,23 @@ export default function Chat() {
     if (!text.trim()) return;
     try {
       const { data } = await api.post("/messages", { match_id: matchId, text: text.trim() });
-      setMsgs(m => [...m, data]);
+      setMsgs((m) => [...m, data]);
       setText("");
-    } catch {}
+    } catch (err) {
+      console.error("Send failed", err);
+      toast.error("Couldn't send. Try again.");
+    }
   };
 
   return (
     <div className="app-shell flex flex-col h-[100dvh]">
       <div className="sticky top-0 z-10 bg-background/90 backdrop-blur-md border-b px-4 py-3 flex items-center gap-3">
-        <button data-testid="chat-back-btn" onClick={()=>navigate("/matches")} className="w-9 h-9 rounded-full grid place-items-center hover:bg-secondary">
+        <button data-testid="chat-back-btn" onClick={() => navigate("/matches")}
+                className="w-9 h-9 rounded-full grid place-items-center hover:bg-secondary">
           <ArrowLeft className="w-4 h-4"/>
         </button>
-        <div className="w-10 h-10 rounded-full overflow-hidden bg-secondary">
-          {other?.photos?.[0] ? <img src={fileUrl(other.photos[0])} className="w-full h-full object-cover" alt={other?.name}
-                onError={(e)=>{ e.currentTarget.style.display='none'; e.currentTarget.parentNode.innerHTML = `<div class='w-full h-full grid place-items-center font-display font-bold text-primary'>${other?.name?.[0]||'?'}</div>`; }}/> :
-            <div className="w-full h-full grid place-items-center font-display font-bold text-primary">{other?.name?.[0]}</div>}
+        <div className="w-10 h-10 rounded-full overflow-hidden">
+          <Avatar user={other}/>
         </div>
         <div className="flex-1 min-w-0">
           <div className="font-display font-bold truncate">{other?.name}</div>
@@ -84,7 +118,7 @@ export default function Chat() {
             You matched with {other?.name}. Break the ice!
           </div>
         )}
-        {msgs.map(m => {
+        {msgs.map((m) => {
           const mine = m.sender_id === user?.user_id;
           return (
             <div key={m.message_id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
@@ -97,10 +131,11 @@ export default function Chat() {
       </div>
 
       <form onSubmit={send} className="border-t px-3 py-3 flex items-center gap-2 bg-background">
-        <Input data-testid="chat-input" value={text} onChange={(e)=>setText(e.target.value)}
+        <Input data-testid="chat-input" value={text} onChange={(e) => setText(e.target.value)}
                placeholder={`Message ${other?.name || ""}`}
                className="rounded-full h-11 bg-card"/>
-        <Button data-testid="chat-send-btn" type="submit" className="w-11 h-11 rounded-full bg-primary hover:bg-primary/90 p-0 shrink-0">
+        <Button data-testid="chat-send-btn" type="submit"
+                className="w-11 h-11 rounded-full bg-primary hover:bg-primary/90 p-0 shrink-0">
           <Send className="w-4 h-4"/>
         </Button>
       </form>

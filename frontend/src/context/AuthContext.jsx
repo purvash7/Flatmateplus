@@ -42,7 +42,7 @@ export function AuthProvider({ children }) {
   };
 
   const logout = async () => {
-    try { await api.post("/auth/logout"); } catch {}
+    try { await api.post("/auth/logout"); } catch (e) { console.error("Logout API failed", e); }
     setToken(null);
     setUser(null);
   };

@@ -38,10 +38,12 @@ export default function Discover() {
       setFallbackMsg(data.fallback_message);
       setShowingNearby(!(data.primary || []).length && !!(data.nearby || []).length);
     } catch (e) {
+      console.error("Discover load failed", e);
       toast.error(e.response?.data?.detail || "Failed to load");
     } finally { setLoading(false); }
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { load(); }, []);
 
   const applyFilters = (f) => { setFilters(f); load(f); };
