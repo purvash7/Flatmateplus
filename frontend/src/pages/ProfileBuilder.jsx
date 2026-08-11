@@ -124,15 +124,12 @@ export default function ProfileBuilder() {
       <div className="px-6 pt-10 pb-4">
         <div className="font-mono-label text-primary">FINAL STEP</div>
         <h1 className="text-3xl font-display font-extrabold leading-tight mt-1">Build your profile</h1>
-        <p className="text-muted-foreground mt-1">
-          Your main photo is verified against your live selfie. Anyone editing it re-runs the check.
-        </p>
       </div>
 
       <div className="px-6 space-y-6">
         <div>
           <div className="flex items-center justify-between mb-3">
-            <Label className="font-mono-label">YOUR PHOTOS</Label>
+            <Label className="font-mono-label">YOUR PHOTOS<span className="text-primary ml-0.5">*</span></Label>
             <span className="text-xs text-muted-foreground flex items-center gap-1">
               <ShieldCheck className="w-3.5 h-3.5 text-primary"/> main = you, alone
             </span>
@@ -164,9 +161,9 @@ export default function ProfileBuilder() {
         {isFlatOwner && (
           <div>
             <div className="flex items-center justify-between mb-3">
-              <Label className="font-mono-label">YOUR FLAT'S PHOTOS</Label>
+              <Label className="font-mono-label">YOUR FLAT'S PHOTOS<span className="text-primary ml-0.5">*</span></Label>
               <span className="text-xs text-muted-foreground flex items-center gap-1">
-                <Home className="w-3.5 h-3.5 text-accent"/> required
+                <Home className="w-3.5 h-3.5 text-accent"/>
               </span>
             </div>
             <div className="grid grid-cols-3 gap-3">
@@ -201,7 +198,7 @@ export default function ProfileBuilder() {
         </div>
 
         <div>
-          <Label className="font-mono-label mb-3 block">PROMPTS</Label>
+          <Label className="font-mono-label mb-3 block">PROMPTS<span className="text-primary ml-0.5">*</span></Label>
           <div className="space-y-3">
             {prompts.map((p, i) => (
               <div key={i} className="p-4 rounded-2xl bg-card border space-y-2">

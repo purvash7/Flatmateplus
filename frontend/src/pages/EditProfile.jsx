@@ -88,7 +88,7 @@ export default function EditProfile() {
       <div className="px-6 py-6 space-y-8">
         <Section title="BASICS">
           <div>
-            <Label className="text-xs text-muted-foreground">NAME (can't change)</Label>
+            <Label className="text-xs text-muted-foreground">NAME</Label>
             <Input value={f.name || ""} disabled className="rounded-2xl h-11 bg-secondary mt-1"/>
           </div>
           <div>
@@ -116,11 +116,6 @@ export default function EditProfile() {
             <Label className="text-xs text-muted-foreground mb-1 block">RADIUS ({f.radius_km || 5}km)</Label>
             <Slider data-testid="ep-radius" min={1} max={50} step={1} value={[f.radius_km || 5]}
                     onValueChange={(v)=>set("radius_km", v[0])}/>
-          </div>
-          <div>
-            <Label className="text-xs text-muted-foreground mb-1 block">OFFICE / COLLEGE AREA</Label>
-            <AreaAutocomplete testid="ep-office-area" value={f.office_locality}
-              onSelect={(r)=>setF(p=>({...p, office_locality:r.locality, office_lat:r.lat, office_lng:r.lng}))}/>
           </div>
           <div>
             <Label className="text-xs text-muted-foreground">MOVE-IN DATE</Label>
@@ -284,7 +279,7 @@ export default function EditProfile() {
           )}
         </Section>
 
-        <Section title="NON-NEGOTIABLES (MAX 4)">
+        <Section title="NON-NEGOTIABLES">
           <div className="grid grid-cols-2 gap-2">
             {NON_NEG.map(([v, l]) => (
               <Chip key={v} testid={`ep-nn-${v}`} active={nn.includes(v)} onClick={()=>toggleNN(v)}>{l}</Chip>

@@ -161,6 +161,9 @@ class SwipeIn(BaseModel):
     target_user_id: str
     direction: str
 
+class ResetPassedIn(BaseModel):
+    reset: bool = True
+
 class MessageIn(BaseModel):
     match_id: str
     text: str
@@ -429,30 +432,44 @@ async def serve_file(path: str):
 # ---------------- Nominatim proxy (avoid CORS + rate-limit headers) ----------------
 @api_router.get("/geo/search")
 async def geo_search(q: str = Query(..., min_length=3)):
+    """Photon (Komoot) geocoder — real prefix autocomplete tuned for India."""
+    seen = set()
+    out = []
     try:
         resp = requests.get(
-            "https://nominatim.openstreetmap.org/search",
-            params={"q": f"{q}, India", "format": "json", "addressdetails": 1, "limit": 6, "countrycodes": "in"},
+            "https://photon.komoot.io/api/",
+            params={"q": q, "limit": 20, "lang": "en", "lat": 20.5937, "lon": 78.9629},
             headers={"User-Agent": "FlatMatePlus/1.0"}, timeout=8,
         )
         if resp.status_code != 200:
             return []
-        raw = resp.json()
+        features = resp.json().get("features", [])
     except Exception as e:
-        logger.warning(f"Nominatim failed: {e}")
+        logger.warning(f"Photon failed: {e}")
         return []
-    out = []
-    for r in raw:
-        addr = r.get("address", {})
-        name = r.get("display_name", "")
-        primary = (addr.get("suburb") or addr.get("neighbourhood") or addr.get("village")
-                   or addr.get("town") or addr.get("city_district") or addr.get("city") or r.get("name") or name.split(",")[0])
-        city = addr.get("city") or addr.get("town") or addr.get("state_district") or addr.get("state") or ""
-        out.append({
-            "display_name": name, "primary": primary, "city": city,
-            "lat": float(r["lat"]), "lng": float(r["lon"]),
-        })
-    return out
+
+    for f in features:
+        props = f.get("properties", {})
+        if (props.get("country") or "").lower() not in ("india", "in"):
+            continue
+        coords = f.get("geometry", {}).get("coordinates") or []
+        if len(coords) < 2:
+            continue
+        lng, lat = float(coords[0]), float(coords[1])
+        primary = props.get("name") or ""
+        if not primary:
+            continue
+        city = (props.get("city") or props.get("county") or props.get("district")
+                or props.get("state") or "")
+        state = props.get("state") or ""
+        # Build a friendly display line
+        display = ", ".join([x for x in (primary, city, state, "India") if x])
+        key = (round(lat, 4), round(lng, 4), primary.lower())
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({"display_name": display, "primary": primary, "city": city, "lat": lat, "lng": lng})
+    return out[:15]
 
 # ---------------- Matching ----------------
 def haversine_km(lat1, lng1, lat2, lng2):
@@ -682,6 +699,12 @@ async def swipe(data: SwipeIn, user: dict = Depends(get_current_user)):
     await db.matches.insert_one(doc)
     doc.pop("_id", None)
     return {"matched": True, "match": doc, "other": user_public(other or {}), "highlights": m["highlights"]}
+
+@api_router.post("/swipes/reset-passed")
+async def reset_passed(user: dict = Depends(get_current_user)):
+    """Clear all 'pass' swipes so user can review rejected profiles again."""
+    result = await db.swipes.delete_many({"user_id": user["user_id"], "direction": "pass"})
+    return {"reset": result.deleted_count}
 
 @api_router.get("/matches")
 async def list_matches(user: dict = Depends(get_current_user)):

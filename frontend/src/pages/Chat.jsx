@@ -62,21 +62,53 @@ export default function Chat() {
     if (!user) return undefined;
     const token = localStorage.getItem("fm_token");
     if (!token) return undefined;
-    const wsUrl = BACKEND_URL.replace(/^http/, "ws") + `/api/ws/${user.user_id}?token=${token}`;
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
-    ws.onmessage = (ev) => {
-      try {
-        const d = JSON.parse(ev.data);
-        if (d.type === "message" && d.message.match_id === matchId) {
-          setMsgs((m) => [...m, d.message]);
+    let ws;
+    let closed = false;
+    let reconnectTimer;
+
+    const connect = () => {
+      const wsUrl = BACKEND_URL.replace(/^http/, "ws") + `/api/ws/${user.user_id}?token=${token}`;
+      ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+      ws.onmessage = (ev) => {
+        try {
+          const d = JSON.parse(ev.data);
+          if (d.type === "message" && d.message.match_id === matchId) {
+            setMsgs((m) => (m.some((x) => x.message_id === d.message.message_id) ? m : [...m, d.message]));
+          }
+        } catch (err) {
+          console.error("WS parse error", err);
         }
-      } catch (err) {
-        console.error("WS parse error", err);
-      }
+      };
+      ws.onerror = (err) => { console.error("WS error", err); };
+      ws.onclose = () => {
+        if (closed) return;
+        reconnectTimer = setTimeout(connect, 2000);
+      };
     };
-    ws.onerror = (err) => { console.error("WS error", err); };
-    return () => ws.close();
+    connect();
+
+    // Polling backup — merges any messages the WS missed
+    const pollTimer = setInterval(async () => {
+      try {
+        const { data } = await api.get(`/messages/${matchId}`);
+        setMsgs((prev) => {
+          const seen = new Set(prev.map((x) => x.message_id));
+          const merged = [...prev];
+          for (const m of data) if (!seen.has(m.message_id)) merged.push(m);
+          return merged;
+        });
+      } catch (err) {
+        // silent — likely transient
+      }
+    }, 3000);
+
+    return () => {
+      closed = true;
+      clearInterval(pollTimer);
+      clearTimeout(reconnectTimer);
+      if (ws) ws.close();
+    };
   }, [user, matchId]);
 
   useEffect(() => {
@@ -88,7 +120,7 @@ export default function Chat() {
     if (!text.trim()) return;
     try {
       const { data } = await api.post("/messages", { match_id: matchId, text: text.trim() });
-      setMsgs((m) => [...m, data]);
+      setMsgs((m) => (m.some((x) => x.message_id === data.message_id) ? m : [...m, data]));
       setText("");
     } catch (err) {
       console.error("Send failed", err);

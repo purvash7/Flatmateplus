@@ -89,7 +89,6 @@ export default function Liveness() {
       <div className="px-6 pt-10 pb-6">
         <div className="font-mono-label text-primary">HUMAN CHECK</div>
         <h1 className="text-3xl font-display font-extrabold leading-tight mt-1">Prove you&apos;re real</h1>
-        <p className="text-muted-foreground mt-1">Complete 4 quick actions — we&apos;ll capture your face for verification.</p>
       </div>
 
       <div className="px-6">
@@ -141,7 +140,6 @@ export default function Liveness() {
               <CheckCircle2 className="w-6 h-6 text-primary"/>
               <div className="font-display font-bold text-lg">All checks passed</div>
             </div>
-            <p className="text-sm text-muted-foreground mt-2">We&apos;ll snap the final selfie and encode your face for photo matching.</p>
             <Button data-testid="liveness-submit-btn" onClick={submit} disabled={submitting || !modelsReady}
                     className="mt-4 w-full h-12 rounded-2xl bg-primary hover:bg-primary/90">
               {submitting ? "Verifying…" : (modelsReady ? "Capture & continue" : "Loading model…")}
