@@ -1,29 +1,21 @@
 import * as React from "react"
 import * as SliderPrimitive from "@radix-ui/react-slider"
-
 import { cn } from "@/lib/utils"
 
-const Slider = React.forwardRef(({ className, ...props }, ref) => (
-  <SliderPrimitive.Root
-    ref={ref}
-    className={cn("relative flex w-full touch-none select-none items-center", className)}
-    {...props}>
-    <SliderPrimitive.Track
-      className="relative h-1.5 w-full grow overflow-hidden rounded-full bg-primary/20">
-      <SliderPrimitive.Range className="absolute h-full bg-primary" />
-    </SliderPrimitive.Track>
-    <span
-      aria-hidden="true"
-      className="pointer-events-none absolute left-0 h-4 w-4 -translate-x-1/2 rounded-full border border-primary/50 bg-background shadow"
-    />
-    <span
-      aria-hidden="true"
-      className="pointer-events-none absolute right-0 h-4 w-4 translate-x-1/2 rounded-full border border-primary/50 bg-background shadow"
-    />
-    <SliderPrimitive.Thumb
-      className="block h-4 w-4 rounded-full border border-primary/50 bg-background shadow transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50" />
-  </SliderPrimitive.Root>
-))
+const Slider = React.forwardRef(({ className, ...props }, ref) => {
+  const values = props.value || props.defaultValue || [props.min ?? 0]
+  return (
+    <SliderPrimitive.Root ref={ref} className={cn("relative flex w-full touch-none select-none items-center", className)} {...props}>
+      <SliderPrimitive.Track className="relative h-1.5 w-full grow overflow-hidden rounded-full bg-primary/20">
+        <SliderPrimitive.Range className="absolute h-full bg-primary" />
+      </SliderPrimitive.Track>
+      {values.map((_, i) => (
+        <SliderPrimitive.Thumb key={i} aria-label={values.length > 1 ? (i === 0 ? "Minimum" : "Maximum") : "Value"}
+          className="block h-4 w-4 rounded-full border border-primary/50 bg-background shadow transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50" />
+      ))}
+    </SliderPrimitive.Root>
+  )
+})
 Slider.displayName = SliderPrimitive.Root.displayName
 
 export { Slider }
