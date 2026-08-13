@@ -3,7 +3,7 @@ from fastapi import FastAPI, APIRouter, HTTPException, Depends, UploadFile, File
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
-import os, logging, uuid, jwt, bcrypt, requests, math
+import os, logging, uuid, jwt, bcrypt, requests, math, shutil
 from pathlib import Path
 from pydantic import BaseModel, EmailStr
 from typing import List, Optional, Dict, Any
@@ -262,6 +262,24 @@ async def process_session(request: Request, response: Response):
                                        "created_at": datetime.now(timezone.utc).isoformat()})
     response.set_cookie("session_token", session_token, path="/", secure=True, samesite="none", httponly=True, max_age=7*24*3600)
     return {"user": user_public(user), "token": session_token}
+
+@api_router.delete("/auth/account")
+async def delete_account(user: dict = Depends(get_current_user)):
+    uid=user["user_id"]
+    matches=await db.matches.find({"user_ids":uid},{"_id":0,"match_id":1}).to_list(None)
+    match_ids=[m["match_id"] for m in matches if m.get("match_id")]
+    if match_ids: await db.messages.delete_many({"match_id":{"$in":match_ids}})
+    await db.messages.delete_many({"sender_id":uid})
+    await db.matches.delete_many({"user_ids":uid})
+    await db.swipes.delete_many({"$or":[{"user_id":uid},{"target_user_id":uid}]})
+    await db.user_sessions.delete_many({"user_id":uid})
+    await db.users.delete_one({"user_id":uid})
+    storage_root=STORAGE_DIR/uid
+    try:
+        if storage_root.exists(): shutil.rmtree(storage_root)
+    except Exception as exc:
+        logger.warning("Storage cleanup failed for %s: %s",uid,exc)
+    return {"ok":True}
 
 @api_router.get("/auth/me")
 async def me(user: dict = Depends(get_current_user)):

@@ -1,3 +1,6 @@
 .App {
   min-height: 100dvh;
 }
+
+.onboarding-questions > div > div { border-bottom: 1px solid hsl(var(--border) / 0.7); padding-bottom: 1.25rem; }
+.onboarding-questions > div > div:last-child { border-bottom: 0; padding-bottom: 0; }

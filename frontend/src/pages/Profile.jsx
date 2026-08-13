@@ -1,16 +1,34 @@
+import { useState } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { fileUrl, setToken } from "@/lib/api";
+import { api, fileUrl, setToken } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import BottomNav from "@/components/BottomNav";
 import { useNavigate } from "react-router-dom";
-import { LogOut, MapPin, Briefcase, Utensils, CheckCircle2 } from "lucide-react";
+import { LogOut, MapPin, Briefcase, Utensils, CheckCircle2, Trash2 } from "lucide-react";
 
 const CHIP = "px-2.5 py-1 rounded-full bg-secondary text-xs";
 
 export default function Profile() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteText, setDeleteText] = useState("");
+  const [deleting, setDeleting] = useState(false);
   if (!user) return null;
+
+  const deleteAccount = async () => {
+    if (deleteText !== "DELETE") return;
+    setDeleting(true);
+    try {
+      await api.delete("/auth/account");
+      setToken(null);
+      await logout();
+      navigate("/");
+    } catch (err) {
+      setDeleting(false);
+      window.alert(err.response?.data?.detail || "Could not delete your account. Please try again.");
+    }
+  };
 
   const doLogout = async () => {
     await logout();
@@ -75,6 +93,17 @@ export default function Profile() {
 
         <Button data-testid="edit-profile-btn" variant="outline" onClick={()=>navigate("/edit-profile")}
                 className="mt-4 w-full h-11 rounded-2xl bg-card">Edit profile</Button>
+
+        <Button data-testid="delete-account-btn" variant="outline" onClick={()=>{setDeleteOpen(true);setDeleteText("")}} className="mt-5 w-full h-11 rounded-2xl border-destructive/40 text-destructive hover:bg-destructive/10"><Trash2 className="w-4 h-4 mr-2"/> Delete account</Button>
+        {deleteOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-6" role="dialog" aria-modal="true">
+            <div className="w-full max-w-md rounded-3xl bg-background border shadow-xl p-6">
+              <div className="flex items-start gap-3"><div className="w-10 h-10 rounded-full bg-destructive/10 text-destructive grid place-items-center shrink-0"><Trash2 className="w-5 h-5"/></div><div><h2 className="font-display font-extrabold text-xl">Delete your account?</h2><p className="mt-2 text-sm text-muted-foreground leading-relaxed">This permanently deletes your profile, matches, swipes, messages, sessions and uploaded files. This cannot be undone.</p></div></div>
+              <div className="mt-5"><label className="font-mono-label text-muted-foreground">TYPE DELETE TO CONFIRM</label><Input autoFocus value={deleteText} onChange={e=>setDeleteText(e.target.value)} placeholder="DELETE" className="mt-2 rounded-2xl h-12" disabled={deleting}/></div>
+              <div className="mt-5 flex gap-3"><Button variant="outline" onClick={()=>setDeleteOpen(false)} disabled={deleting} className="flex-1 h-11 rounded-2xl">Cancel</Button><Button variant="destructive" onClick={deleteAccount} disabled={deleting || deleteText !== "DELETE"} className="flex-1 h-11 rounded-2xl">{deleting ? "Deleting…" : "Delete permanently"}</Button></div>
+            </div>
+          </div>
+        )}
         <Button data-testid="manage-photos-btn" variant="ghost" onClick={()=>navigate("/profile-setup")}
                 className="mt-2 w-full h-11 rounded-2xl">Manage photos & prompts</Button>
       </div>

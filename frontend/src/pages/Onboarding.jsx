@@ -103,11 +103,19 @@ export default function Onboarding() {
           </div>
           <div>
             <Label className="font-mono-label mb-2 block">SEARCH RADIUS</Label>
-            <div className="flex items-center justify-between text-sm mb-2 text-muted-foreground">
-              <span>1 km</span><span className="text-foreground font-semibold">{d.radius_km} km</span><span>25 km</span>
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <span className="text-sm text-muted-foreground">Search within</span>
+              <div className="flex items-center gap-2">
+                <Input data-testid="ob-radius-input" type="number" min={1} max={25} step={1}
+                       value={d.radius_km}
+                       onChange={(e)=>set("radius_km", Math.min(25, Math.max(1, Number(e.target.value) || 1)))}
+                       className="rounded-xl h-10 w-24 text-center"/>
+                <span className="text-sm text-muted-foreground">km</span>
+              </div>
             </div>
             <Slider data-testid="ob-radius" min={1} max={25} step={1} value={[d.radius_km]}
                     onValueChange={(v)=>set("radius_km", v[0])}/>
+            <div className="flex justify-between text-xs text-muted-foreground mt-2"><span>1 km</span><span>25 km</span></div>
           </div>
           <div>
             <Label className="font-mono-label mb-2 block">MOVE-IN DATE<Star/></Label>
@@ -136,8 +144,21 @@ export default function Onboarding() {
           ))}
           <div className="pt-2">
             <Label className="font-mono-label mb-2 block">BUDGET (₹/month)<Star/></Label>
-            <div className="flex items-center justify-between text-sm mb-1 text-muted-foreground">
-              <span>₹{d.budget_min.toLocaleString()}</span><span>₹{d.budget_max.toLocaleString()}</span>
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div>
+                <Label className="text-xs text-muted-foreground mb-1 block">MINIMUM</Label>
+                <Input data-testid="ob-budget-min" type="number" min={3000} max={80000} step={1000}
+                       value={d.budget_min}
+                       onChange={(e)=>set("budget_min", Math.min(80000, Math.max(3000, Math.min(Number(e.target.value)||3000, d.budget_max))))}
+                       className="rounded-xl h-11"/>
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground mb-1 block">MAXIMUM</Label>
+                <Input data-testid="ob-budget-max" type="number" min={3000} max={80000} step={1000}
+                       value={d.budget_max}
+                       onChange={(e)=>set("budget_max", Math.max(3000, Math.min(80000, Math.max(Number(e.target.value)||80000, d.budget_min))))}
+                       className="rounded-xl h-11"/>
+              </div>
             </div>
             <Slider data-testid="ob-budget" min={3000} max={80000} step={1000}
                     value={[d.budget_min, d.budget_max]}
@@ -154,7 +175,7 @@ export default function Onboarding() {
           <div>
             <Label className="font-mono-label mb-3 block">FOOD<Star/></Label>
             <div className="grid grid-cols-2 gap-2">
-              {[["veg","Vegetarian"],["non_veg","Non-Vegetarian"],["eggetarian","Eggetarian"],["vegan","Vegan"]].map(([v,l])=>(
+              {[["veg","Vegetarian"],["veg_ok_nonveg_cooked","Vegetarian, okay with non-veg being cooked"],["non_veg","Non-Vegetarian"],["eggetarian","Eggetarian"],["vegan","Vegan"]].map(([v,l])=>(
                 <Chip testid={`ob-food-${v}`} key={v} active={d.food_pref===v} onClick={()=>set("food_pref", v)}>{l}</Chip>
               ))}
             </div>
@@ -373,7 +394,7 @@ export default function Onboarding() {
                       exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.25 }}>
             <div className="font-mono-label text-primary mb-2">STEP {step+1}</div>
             <h1 className="text-3xl font-display font-extrabold leading-tight">{cur.title}</h1>
-            <div className="mt-8">{cur.body}</div>
+            <div className="mt-8 onboarding-questions">{cur.body}</div>
           </motion.div>
         </AnimatePresence>
       </div>
