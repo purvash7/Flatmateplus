@@ -1,0 +1,48 @@
+name: Apply FlatMate+ requested features
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply requested changes
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          def patch(path, fn):
+              p=Path(path); s=p.read_text(); n=fn(s)
+              if n==s: raise SystemExit(f'Patch did not change {path}')
+              p.write_text(n)
+          # Restore the previously implemented Google-login UI/flow that uses the existing auth/session backend.
+          import subprocess
+          subprocess.run(['git','checkout','2d6a819bf2239c63f9064e0a9afd4f58dd0b5a78','--','frontend/src/pages/Landing.jsx'],check=True)
+          # Make the face matcher less prone to false rejection.
+          patch('backend/server.py', lambda s: s.replace('        if dist > 0.6:', '        if dist > 0.65:', 1))
+          # Allow the new vegetarian preference to match regular vegetarian users.
+          patch('backend/server.py', lambda s: s.replace('    add(a.get("food_pref") == b.get("food_pref") and a.get("food_pref"), "food_same", 8)', '    food_a, food_b = a.get("food_pref"), b.get("food_pref")\n    food_compatible = food_a == food_b or {food_a, food_b} <= {"veg", "veg_ok_nonveg_cooked"}\n    add(food_compatible and food_a, "food_same", 8)', 1).replace('    if "food_pref" in non_neg and a.get("food_pref") != b.get("food_pref"):\n        return False', '    if "food_pref" in non_neg:\n        food_a, food_b = a.get("food_pref"), b.get("food_pref")\n        food_compatible = food_a == food_b or {food_a, food_b} <= {"veg", "veg_ok_nonveg_cooked"}\n        if not food_compatible:\n            return False', 1))
+          # Make face detection itself slightly more tolerant of lighting/camera conditions.
+          patch('frontend/src/lib/faceUtils.js', lambda s: s.replace('scoreThreshold: 0.5','scoreThreshold: 0.4',1))
+          # Add the requested food option and separators between onboarding questions.
+          patch('frontend/src/pages/Onboarding.jsx', lambda s: s.replace('{[["veg","Vegetarian"],["non_veg","Non-Vegetarian"],["eggetarian","Eggetarian"],["vegan","Vegan"]].map(([v,l])=>(', '{[["veg","Vegetarian"],["veg_ok_nonveg_cooked","Vegetarian, okay with non-veg being cooked"],["non_veg","Non-Vegetarian"],["eggetarian","Eggetarian"],["vegan","Vegan"]].map(([v,l])=>(',1).replace('<div className="mt-8">{cur.body}</div>','<div className="mt-8 onboarding-questions">{cur.body}</div>',1).replace('<div className="space-y-6">','<div className="space-y-6 divide-y divide-border/60">').replace('<div className="space-y-5">','<div className="space-y-5 divide-y divide-border/60>'))
+          # Fix the dual-thumb budget range and provide direct min/max entry fields.
+          slider='''import * as React from "react"\nimport * as SliderPrimitive from "@radix-ui/react-slider"\nimport { cn } from "@/lib/utils"\nconst Slider = React.forwardRef(({ className, value, defaultValue, ...props }, ref) => {\n  const values=value||defaultValue||[props.min??0]\n  return <SliderPrimitive.Root ref={ref} className={cn("relative flex w-full touch-none select-none items-center",className)} {...props}>\n    <SliderPrimitive.Track className="relative h-1.5 w-full grow overflow-hidden rounded-full bg-primary/20"><SliderPrimitive.Range className="absolute h-full bg-primary"/></SliderPrimitive.Track>\n    {values.map((_,i)=><SliderPrimitive.Thumb key={i} aria-label={values.length>1?(i===0?"Minimum":"Maximum"):"Value"} className="block h-5 w-5 rounded-full border border-primary/50 bg-background shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"/>)}\n  </SliderPrimitive.Root>\n})\nSlider.displayName=SliderPrimitive.Root.displayName\nexport { Slider }\n'''
+          patch('frontend/src/components/ui/slider.jsx', lambda s: slider)
+          # Add destructive account deletion UI.
+          patch('frontend/src/pages/Profile.jsx', lambda s: s.replace('import { fileUrl, setToken } from "@/lib/api";','import { api, fileUrl, setToken } from "@/lib/api";',1).replace('import { LogOut, MapPin, Briefcase, Utensils, CheckCircle2 } from "lucide-react";','import { LogOut, MapPin, Briefcase, Utensils, CheckCircle2, Trash2 } from "lucide-react";',1).replace('import { useAuth } from "@/context/AuthContext";','import { useAuth } from "@/context/AuthContext";\nimport { useState } from "react";',1).replace('  const { user, logout } = useAuth();','  const { user, logout } = useAuth();\n  const [deleting, setDeleting] = useState(false);',1).replace('  const doLogout = async () => {','  const deleteAccount = async () => {\n    if (!window.confirm("Delete your account and all your FlatMate+ data? This cannot be undone.")) return;\n    setDeleting(true);\n    try { await api.delete("/auth/account"); setToken(null); await logout(); navigate("/"); }\n    catch (err) { setDeleting(false); window.alert(err.response?.data?.detail || "Could not delete your account. Please try again."); }\n  };\n\n  const doLogout = async () => {',1).replace('        <Button data-testid="manage-photos-btn"','        <Button data-testid="delete-account-btn" variant="outline" onClick={deleteAccount} disabled={deleting} className="mt-5 w-full h-11 rounded-2xl border-destructive/40 text-destructive hover:bg-destructive/10"><Trash2 className="w-4 h-4 mr-2"/>{deleting ? "Deleting…" : "Delete account"}</Button>\n        <Button data-testid="manage-photos-btn"',1))
+          # Add the actual destructive backend endpoint.\n          patch('backend/server.py', lambda s: s.replace('import os, logging, uuid, jwt, bcrypt, requests, math','import os, logging, uuid, jwt, bcrypt, requests, math, shutil',1).replace('@api_router.get("/auth/me")','@api_router.delete("/auth/account")\nasync def delete_account(user: dict = Depends(get_current_user)):\n    uid=user["user_id"]\n    ms=await db.matches.find({"user_ids":uid},{"_id":0,"match_id":1}).to_list(None)\n    mids=[m["match_id"] for m in ms if m.get("match_id")]\n    if mids: await db.messages.delete_many({"match_id":{"$in":mids}})\n    await db.messages.delete_many({"sender_id":uid})\n    await db.matches.delete_many({"user_ids":uid})\n    await db.swipes.delete_many({"$or":[{"user_id":uid},{"target_user_id":uid}]})\n    await db.user_sessions.delete_many({"user_id":uid})\n    await db.files.delete_many({"user_id":uid})\n    await db.users.delete_one({"user_id":uid})\n    root=STORAGE_DIR/APP_NAME/"uploads"/uid\n    if root.exists():\n        try: shutil.rmtree(root)\n        except Exception as exc: logger.warning("Storage cleanup failed: %s",exc)\n    return {"ok":True}\n\n@api_router.get("/auth/me")',1))
+          PY
+      - name: Validate and commit
+        run: |
+          python3 -m py_compile backend/server.py
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend frontend
+          git commit -m "Add requested FlatMate+ features"
+          git push
