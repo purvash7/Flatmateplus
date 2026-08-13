@@ -18,9 +18,6 @@ db = client[os.environ['DB_NAME']]
 
 JWT_SECRET = os.environ['JWT_SECRET']
 APP_NAME = os.environ.get('APP_NAME', 'flatmate-plus')
-STORAGE_BASE = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip() or "https://integrations.emergentagent.com"
-STORAGE_URL = STORAGE_BASE.rstrip("/") + "/objstore/api/v1/storage"
-EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
 
 app = FastAPI(title="FlatMate+ API")
 api_router = APIRouter(prefix="/api")
@@ -28,37 +25,34 @@ api_router = APIRouter(prefix="/api")
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ---------------- Storage ----------------
-storage_key: Optional[str] = None
+# ---------------- Storage (local disk) ----------------
+# NOTE: on most free hosts (e.g. Render free tier) this directory is wiped on
+# every redeploy/restart. Fine for early testing; move to S3/Cloudinary
+# before you have real users depending on uploaded photos sticking around.
+STORAGE_DIR = Path(os.environ.get("STORAGE_DIR", ROOT_DIR / "storage"))
+STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 
-def init_storage(force: bool = False):
-    global storage_key
-    if storage_key and not force:
-        return storage_key
-    resp = requests.post(f"{STORAGE_URL}/init", json={"emergent_key": EMERGENT_KEY}, timeout=30)
-    resp.raise_for_status()
-    storage_key = resp.json()["storage_key"]
-    return storage_key
+def _safe_storage_path(path: str) -> Path:
+    full = (STORAGE_DIR / path).resolve()
+    if not str(full).startswith(str(STORAGE_DIR.resolve())):
+        raise ValueError("invalid storage path")
+    return full
 
 def put_object(path: str, data: bytes, content_type: str) -> dict:
-    key = init_storage()
-    resp = requests.put(f"{STORAGE_URL}/objects/{path}",
-                        headers={"X-Storage-Key": key, "Content-Type": content_type}, data=data, timeout=120)
-    if resp.status_code == 404:
-        key = init_storage(force=True)
-        resp = requests.put(f"{STORAGE_URL}/objects/{path}",
-                            headers={"X-Storage-Key": key, "Content-Type": content_type}, data=data, timeout=120)
-    resp.raise_for_status()
-    return resp.json()
+    full = _safe_storage_path(path)
+    full.parent.mkdir(parents=True, exist_ok=True)
+    full.write_bytes(data)
+    (full.parent / (full.name + ".meta")).write_text(content_type)
+    return {"path": path, "size": len(data)}
 
 def get_object(path: str) -> tuple:
-    key = init_storage()
-    resp = requests.get(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key}, timeout=60)
-    if resp.status_code == 404:
-        key = init_storage(force=True)
-        resp = requests.get(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key}, timeout=60)
-    resp.raise_for_status()
-    return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
+    full = _safe_storage_path(path)
+    if not full.exists():
+        raise FileNotFoundError(path)
+    data = full.read_bytes()
+    meta_file = full.parent / (full.name + ".meta")
+    content_type = meta_file.read_text() if meta_file.exists() else "application/octet-stream"
+    return data, content_type
 
 # ---------------- Models ----------------
 class UserRegister(BaseModel):
@@ -787,11 +781,6 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup():
-    try:
-        init_storage()
-        logger.info("Storage initialized")
-    except Exception as e:
-        logger.error(f"Storage init failed: {e}")
     await db.users.create_index("user_id", unique=True)
     await db.users.create_index("email", unique=True)
     await db.swipes.create_index([("user_id", 1), ("target_user_id", 1)], unique=True)

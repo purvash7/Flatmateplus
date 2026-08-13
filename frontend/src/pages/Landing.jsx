@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
-import { Home, Sparkles } from "lucide-react";
+import { Home } from "lucide-react";
 
 export default function Landing() {
   const { login, register } = useAuth();
@@ -31,12 +31,6 @@ export default function Landing() {
     } finally {
       setBusy(false);
     }
-  };
-
-  const googleLogin = () => {
-    // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
-    const redirectUrl = window.location.origin + "/discover";
-    window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
   };
 
   return (
@@ -79,17 +73,6 @@ export default function Landing() {
               {busy ? "…" : mode === "login" ? "Log in" : "Create account"}
             </Button>
           </form>
-
-          <div className="flex items-center gap-3 my-5">
-            <div className="h-px bg-border flex-1"/>
-            <div className="font-mono-label text-muted-foreground">OR</div>
-            <div className="h-px bg-border flex-1"/>
-          </div>
-
-          <Button data-testid="google-login-btn" onClick={googleLogin} variant="outline"
-                  className="w-full h-12 rounded-2xl bg-card hover:bg-secondary text-base gap-2">
-            <Sparkles className="w-4 h-4"/> Continue with Google
-          </Button>
 
           <button data-testid="auth-toggle-btn" type="button" onClick={()=>setMode(mode === "login" ? "register" : "login")}
                   className="mt-5 text-sm text-muted-foreground hover:text-foreground text-center w-full">
