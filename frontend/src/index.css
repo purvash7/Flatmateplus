@@ -3,106 +3,29 @@
 @tailwind utilities;
 
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap');
-/* Cabinet Grotesk via Fontshare */
 @import url('https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@700,800&display=swap');
 
-:root {
-  --background: 39 44% 98%;         /* #FDFBF7 warm sand */
-  --foreground: 231 21% 21%;        /* #2B2D42 charcoal */
-  --card: 0 0% 100%;
-  --card-foreground: 231 21% 21%;
-  --popover: 0 0% 100%;
-  --popover-foreground: 231 21% 21%;
-  --primary: 14 66% 63%;            /* #E07A5F terracotta */
-  --primary-foreground: 0 0% 100%;
-  --secondary: 39 33% 94%;          /* #F4F1EA */
-  --secondary-foreground: 231 21% 21%;
-  --muted: 39 33% 94%;
-  --muted-foreground: 220 12% 54%;  /* #7D8597 */
-  --accent: 39 76% 75%;             /* #F2CC8F */
-  --accent-foreground: 231 21% 21%;
-  --destructive: 355 78% 56%;
-  --destructive-foreground: 0 0% 100%;
-  --border: 0 0% 90%;
-  --input: 0 0% 90%;
-  --ring: 14 66% 63%;
-  --radius: 1rem;
-}
+:root { --background: 39 44% 98%; --foreground: 231 21% 21%; --card: 0 0% 100%; --card-foreground: 231 21% 21%; --popover: 0 0% 100%; --popover-foreground: 231 21% 21%; --primary: 14 66% 63%; --primary-foreground: 0 0% 100%; --secondary: 39 33% 94%; --secondary-foreground: 231 21% 21%; --muted: 39 33% 94%; --muted-foreground: 220 12% 54%; --accent: 39 76% 75%; --accent-foreground: 231 21% 21%; --destructive: 355 78% 56%; --destructive-foreground: 0 0% 100%; --border: 0 0% 90%; --input: 0 0% 90%; --ring: 14 66% 63%; --radius: 1rem; }
+* { border-color: hsl(var(--border)); }
+html, body, #root { height: 100%; }
+body { margin: 0; font-family: 'Manrope', system-ui, sans-serif; background: hsl(var(--background)); color: hsl(var(--foreground)); -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; background-image: radial-gradient(rgba(43,45,66,.03) 1px,transparent 1px); background-size: 4px 4px; }
+h1,h2,h3,h4,.font-display { font-family:'Cabinet Grotesk','Manrope',sans-serif; letter-spacing:-.02em; }
+.font-mono-label { font-family:'Manrope',sans-serif; font-weight:700; letter-spacing:.14em; text-transform:uppercase; font-size:.72rem; }
+.shadow-soft { box-shadow:0 8px 30px rgba(43,45,66,.06); }
+.shadow-lift { box-shadow:0 20px 60px rgba(43,45,66,.12); }
+.app-shell { max-width:28rem; margin:0 auto; min-height:100dvh; position:relative; background:hsl(var(--background)); overflow:hidden; }
+::-webkit-scrollbar { width:6px; height:6px; }
+::-webkit-scrollbar-thumb { background:hsl(var(--muted-foreground)/.3); border-radius:999px; }
+::selection { background:hsl(var(--primary)/.25); }
+@keyframes ring-pulse { 0%,100% { box-shadow:0 0 0 0 rgba(224,122,95,.6); } 50% { box-shadow:0 0 0 24px rgba(224,122,95,0); } }
+.pulse-ring { animation:ring-pulse 1.8s ease-out infinite; }
+.grainy { position:relative; }
+.grainy::after { content:''; position:absolute; inset:0; pointer-events:none; opacity:.05; background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
 
-* {
-  border-color: hsl(var(--border));
-}
-
-html, body, #root {
-  height: 100%;
-}
-
-body {
-  margin: 0;
-  font-family: 'Manrope', system-ui, sans-serif;
-  background: hsl(var(--background));
-  color: hsl(var(--foreground));
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  background-image:
-    radial-gradient(rgba(43, 45, 66, 0.03) 1px, transparent 1px);
-  background-size: 4px 4px;
-}
-
-h1, h2, h3, h4, .font-display {
-  font-family: 'Cabinet Grotesk', 'Manrope', sans-serif;
-  letter-spacing: -0.02em;
-}
-
-.font-mono-label {
-  font-family: 'Manrope', sans-serif;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  font-size: 0.72rem;
-}
-
-/* Soft neu shadow */
-.shadow-soft {
-  box-shadow: 0 8px 30px rgba(43, 45, 66, 0.06);
-}
-
-.shadow-lift {
-  box-shadow: 0 20px 60px rgba(43, 45, 66, 0.12);
-}
-
-/* App container - mobile-first */
-.app-shell {
-  max-width: 28rem;
-  margin: 0 auto;
-  min-height: 100dvh;
-  position: relative;
-  background: hsl(var(--background));
-  overflow: hidden;
-}
-
-/* Custom scrollbar */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-thumb { background: hsl(var(--muted-foreground) / 0.3); border-radius: 999px; }
-
-/* Selection */
-::selection { background: hsl(var(--primary) / 0.25); }
-
-/* Pulse for liveness */
-@keyframes ring-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(224, 122, 95, 0.6); }
-  50% { box-shadow: 0 0 0 24px rgba(224, 122, 95, 0); }
-}
-.pulse-ring { animation: ring-pulse 1.8s ease-out infinite; }
-
-/* Card noise */
-.grainy {
-  position: relative;
-}
-.grainy::after {
-  content: '';
-  position: absolute; inset: 0;
-  pointer-events: none;
-  opacity: 0.05;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-}
+/* Make every onboarding option readable instead of rendering blank pills. */
+.onboarding-questions [data-testid^="ob-lang-"],
+.onboarding-questions [data-testid^="ob-interest-"],
+.onboarding-questions [data-testid^="ob-flatpref-"] { color:hsl(var(--foreground)) !important; background-color:hsl(var(--card)) !important; border-color:hsl(var(--border)) !important; white-space:nowrap; }
+.onboarding-questions [data-testid^="ob-lang-"].bg-primary { color:hsl(var(--primary-foreground)) !important; border-color:transparent !important; }
+.onboarding-questions [data-testid^="ob-interest-"].bg-foreground { color:hsl(var(--background)) !important; border-color:transparent !important; }
+.onboarding-questions [data-testid^="ob-flatpref-"].bg-accent { color:hsl(var(--accent-foreground)) !important; border-color:transparent !important; }
