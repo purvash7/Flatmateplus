@@ -1,0 +1,88 @@
+name: One-shot FlatMate+ repair
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply fixes and validate
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          def replace(path, old, new, count=1):
+              p=Path(path); s=p.read_text()
+              if old not in s:
+                  raise SystemExit(f"Expected block not found: {path}")
+              p.write_text(s.replace(old,new,count))
+
+          # Radius: direct editable value + slider.
+          replace('frontend/src/pages/Onboarding.jsx', '''          <div>\n            <Label className="font-mono-label mb-2 block">SEARCH RADIUS</Label>\n            <div className="flex items-center justify-between text-sm mb-2 text-muted-foreground">\n              <span>1 km</span><span className="text-foreground font-semibold">{d.radius_km} km</span><span>25 km</span>\n            </div>\n            <Slider data-testid="ob-radius" min={1} max={25} step={1} value={[d.radius_km]}\n                    onValueChange={(v)=>set("radius_km", v[0])}/>\n          </div>''', '''          <div>\n            <Label className="font-mono-label mb-2 block">SEARCH RADIUS</Label>\n            <div className="flex items-center justify-between gap-3 mb-3">\n              <span className="text-sm text-muted-foreground">Search within</span>\n              <div className="flex items-center gap-2">\n                <Input data-testid="ob-radius-input" type="number" min={1} max={25} step={1}\n                       value={d.radius_km}\n                       onChange={(e)=>set("radius_km", Math.min(25, Math.max(1, Number(e.target.value) || 1)))}\n                       className="rounded-xl h-10 w-24 text-center"/>\n                <span className="text-sm text-muted-foreground">km</span>\n              </div>\n            </div>\n            <Slider data-testid="ob-radius" min={1} max={25} step={1} value={[d.radius_km]}\n                    onValueChange={(v)=>set("radius_km", v[0])}/>\n            <div className="flex justify-between text-xs text-muted-foreground mt-2"><span>1 km</span><span>25 km</span></div>\n          </div>''')
+
+          # Rent: direct editable min/max + slider.
+          replace('frontend/src/pages/Onboarding.jsx', '''            <div className="flex items-center justify-between text-sm mb-1 text-muted-foreground">\n              <span>₹{d.budget_min.toLocaleString()}</span><span>₹{d.budget_max.toLocaleString()}</span>\n            </div>\n            <Slider data-testid="ob-budget" min={3000} max={80000} step={1000}\n                    value={[d.budget_min, d.budget_max]}\n                    onValueChange={(v)=>{ set("budget_min", v[0]); set("budget_max", v[1]); }}/>''', '''            <div className="grid grid-cols-2 gap-3 mb-3">\n              <div>\n                <Label className="text-xs text-muted-foreground mb-1 block">MINIMUM</Label>\n                <Input data-testid="ob-budget-min" type="number" min={3000} max={80000} step={1000}\n                       value={d.budget_min}\n                       onChange={(e)=>set("budget_min", Math.min(80000, Math.max(3000, Math.min(Number(e.target.value)||3000, d.budget_max))))}\n                       className="rounded-xl h-11"/>\n              </div>\n              <div>\n                <Label className="text-xs text-muted-foreground mb-1 block">MAXIMUM</Label>\n                <Input data-testid="ob-budget-max" type="number" min={3000} max={80000} step={1000}\n                       value={d.budget_max}\n                       onChange={(e)=>set("budget_max", Math.max(3000, Math.min(80000, Math.max(Number(e.target.value)||80000, d.budget_min))))}\n                       className="rounded-xl h-11"/>\n              </div>\n            </div>\n            <Slider data-testid="ob-budget" min={3000} max={80000} step={1000}\n                    value={[d.budget_min, d.budget_max]}\n                    onValueChange={(v)=>{ set("budget_min", v[0]); set("budget_max", v[1]); }}/>''')
+
+          # Food option.
+          replace('frontend/src/pages/Onboarding.jsx', '[["veg","Vegetarian"],["non_veg","Non-Vegetarian"],["eggetarian","Eggetarian"],["vegan","Vegan"]]', '[["veg","Vegetarian"],["veg_ok_nonveg_cooked","Vegetarian, okay with non-veg being cooked"],["non_veg","Non-Vegetarian"],["eggetarian","Eggetarian"],["vegan","Vegan"]]')
+
+          # Wrapper for visual question separators.
+          replace('frontend/src/pages/Onboarding.jsx', '<div className="mt-8">{cur.body}</div>', '<div className="mt-8 onboarding-questions">{cur.body}</div>')
+
+          css=Path('frontend/src/App.css'); c=css.read_text()
+          if '.onboarding-questions > div > div' not in c:
+              css.write_text(c+'''\n.onboarding-questions > div > div { border-bottom: 1px solid hsl(var(--border) / 0.7); padding-bottom: 1.25rem; }\n.onboarding-questions > div > div:last-child { border-bottom: 0; padding-bottom: 0; }\n''')
+
+          # Delete account UI with exact DELETE confirmation.
+          p=Path('frontend/src/pages/Profile.jsx'); s=p.read_text()
+          if 'import { useState } from "react";' not in s: s='import { useState } from "react";\n'+s
+          s=s.replace('import { fileUrl, setToken } from "@/lib/api";','import { api, fileUrl, setToken } from "@/lib/api";',1)
+          s=s.replace('import { LogOut, MapPin, Briefcase, Utensils, CheckCircle2 } from "lucide-react";','import { LogOut, MapPin, Briefcase, Utensils, CheckCircle2, Trash2 } from "lucide-react";',1)
+          if 'const [deleteOpen, setDeleteOpen]' not in s:
+              s=s.replace('  const navigate = useNavigate();','  const navigate = useNavigate();\n  const [deleteOpen, setDeleteOpen] = useState(false);\n  const [deleteText, setDeleteText] = useState("");\n  const [deleting, setDeleting] = useState(false);',1)
+          if 'const deleteAccount = async' not in s:
+              s=s.replace('  const doLogout = async () => {','''  const deleteAccount = async () => {\n    if (deleteText !== "DELETE") return;\n    setDeleting(true);\n    try {\n      await api.delete("/auth/account");\n      setToken(null);\n      await logout();\n      navigate("/");\n    } catch (err) {\n      setDeleting(false);\n      window.alert(err.response?.data?.detail || "Could not delete your account. Please try again.");\n    }\n  };\n\n  const doLogout = async () => {''',1)
+          if 'data-testid="delete-account-btn"' not in s:
+              block='''\n        <Button data-testid="delete-account-btn" variant="outline" onClick={()=>{setDeleteOpen(true);setDeleteText("")}} className="mt-5 w-full h-11 rounded-2xl border-destructive/40 text-destructive hover:bg-destructive/10"><Trash2 className="w-4 h-4 mr-2"/> Delete account</Button>\n        {deleteOpen && (\n          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-6" role="dialog" aria-modal="true">\n            <div className="w-full max-w-md rounded-3xl bg-background border shadow-xl p-6">\n              <div className="flex items-start gap-3"><div className="w-10 h-10 rounded-full bg-destructive/10 text-destructive grid place-items-center shrink-0"><Trash2 className="w-5 h-5"/></div><div><h2 className="font-display font-extrabold text-xl">Delete your account?</h2><p className="mt-2 text-sm text-muted-foreground leading-relaxed">This permanently deletes your profile, matches, swipes, messages, sessions and uploaded files. This cannot be undone.</p></div></div>\n              <div className="mt-5"><label className="font-mono-label text-muted-foreground">TYPE DELETE TO CONFIRM</label><Input autoFocus value={deleteText} onChange={e=>setDeleteText(e.target.value)} placeholder="DELETE" className="mt-2 rounded-2xl h-12" disabled={deleting}/></div>\n              <div className="mt-5 flex gap-3"><Button variant="outline" onClick={()=>setDeleteOpen(false)} disabled={deleting} className="flex-1 h-11 rounded-2xl">Cancel</Button><Button variant="destructive" onClick={deleteAccount} disabled={deleting || deleteText !== "DELETE"} className="flex-1 h-11 rounded-2xl">{deleting ? "Deleting…" : "Delete permanently"}</Button></div>\n            </div>\n          </div>\n        )}\n'''
+              s=s.replace('        <Button data-testid="manage-photos-btn"',block+'        <Button data-testid="manage-photos-btn"',1)
+          p.write_text(s)
+
+          # Backend deletion.
+          p=Path('backend/server.py'); s=p.read_text()
+          s=s.replace('import os, logging, uuid, jwt, bcrypt, requests, math','import os, logging, uuid, jwt, bcrypt, requests, math, shutil',1) if 'math, shutil' not in s else s
+          if '@api_router.delete("/auth/account")' not in s:
+              endpoint='''@api_router.delete("/auth/account")\nasync def delete_account(user: dict = Depends(get_current_user)):\n    uid=user["user_id"]\n    matches=await db.matches.find({"user_ids":uid},{"_id":0,"match_id":1}).to_list(None)\n    match_ids=[m["match_id"] for m in matches if m.get("match_id")]\n    if match_ids: await db.messages.delete_many({"match_id":{"$in":match_ids}})\n    await db.messages.delete_many({"sender_id":uid})\n    await db.matches.delete_many({"user_ids":uid})\n    await db.swipes.delete_many({"$or":[{"user_id":uid},{"target_user_id":uid}]})\n    await db.user_sessions.delete_many({"user_id":uid})\n    await db.users.delete_one({"user_id":uid})\n    storage_root=STORAGE_DIR/uid\n    try:\n        if storage_root.exists(): shutil.rmtree(storage_root)\n    except Exception as exc:\n        logger.warning("Storage cleanup failed for %s: %s",uid,exc)\n    return {"ok":True}\n\n'''
+              if '@api_router.get("/auth/me")' not in s: raise SystemExit('auth/me marker missing')
+              s=s.replace('@api_router.get("/auth/me")',endpoint+'@api_router.get("/auth/me")',1)
+              p.write_text(s)
+
+          # Remove temporary/failing repair workflows so future pushes are clean.
+          wf=Path('.github/workflows')
+          for name in ['apply-flatmate-features.yml','fix-requested-ui-and-delete.yml','repair-fix-validation.yml','finalize-flatmate-fixes.yml','one-shot-repair.yml']:
+              f=wf/name
+              if f.exists(): f.unlink()
+          print('FINAL FEATURES APPLIED AND REPAIR WORKFLOWS REMOVED')
+          PY
+
+          python3 -m py_compile backend/server.py
+          git diff --check
+          cd frontend
+          npm install --legacy-peer-deps --no-audit --no-fund
+          CI=false npm run build
+
+      - name: Commit final code
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet || git commit -m "Finalize FlatMate+ requested features"
+          git push
