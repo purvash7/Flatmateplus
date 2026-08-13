@@ -11,6 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Restore backend from last known good commit and add seed switch
         run: |
           git checkout 2e3b5ca1cce7234b288b7785efbdc79e47fd9bd4 -- backend/server.py
