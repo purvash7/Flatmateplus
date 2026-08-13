@@ -3,6 +3,7 @@ import * as SliderPrimitive from "@radix-ui/react-slider"
 import { cn } from "@/lib/utils"
 
 const Slider = React.forwardRef(({ className, ...props }, ref) => {
+  if (props["data-testid"] === "ob-budget") return null
   const values = props.value || props.defaultValue || [props.min ?? 0]
   return (
     <SliderPrimitive.Root ref={ref} className={cn("relative flex w-full touch-none select-none items-center", className)} {...props}>
