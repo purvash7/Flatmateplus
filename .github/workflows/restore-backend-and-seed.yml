@@ -1,0 +1,36 @@
+name: Restore backend and seed demo data
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  restore:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore backend from last known good commit and add seed switch
+        run: |
+          git checkout 2e3b5ca1cce7234b288b7785efbdc79e47fd9bd4 -- backend/server.py
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('backend/server.py')
+          s=p.read_text()
+          s=s.replace('import os, logging, uuid, jwt, bcrypt, requests, math, shutil', 'import os, logging, uuid, jwt, bcrypt, requests, math, shutil, asyncio, sys', 1)
+          marker='logger = logging.getLogger(__name__)\n'
+          block='''\n@app.on_event("startup")\nasync def seed_dummy_profiles_on_startup():\n    if os.environ.get("SEED_DUMMY_PROFILES", "false").lower() != "true":\n        return\n    proc = await asyncio.create_subprocess_exec(sys.executable, str(ROOT_DIR / "seed_dummy_profiles.py"), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)\n    output, _ = await proc.communicate()\n    logger.info(output.decode(errors="replace").strip())\n    if proc.returncode != 0:\n        raise RuntimeError("Dummy profile seeding failed")\n'''
+          if 'seed_dummy_profiles_on_startup' not in s:
+              s=s.replace(marker, marker+block, 1)
+          p.write_text(s)
+          PY
+      - name: Validate backend
+        run: python3 -m py_compile backend/server.py
+      - name: Commit restored backend
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend/server.py
+          git commit -m "Restore backend and add optional dummy seeding" || true
+          git push
