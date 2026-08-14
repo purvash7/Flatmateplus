@@ -1,0 +1,29 @@
+name: Enable FlatMate+ product patch
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/enable-product-patch.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  enable:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Enable patch workflow
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('.github/workflows/apply-product-updates-v4.yml')
+          s=p.read_text()
+          old='    if: ${{ !contains(github.event.head_commit.message, \'Apply FlatMate+ product updates v4\') }}\n'
+          if old in s:
+              p.write_text(s.replace(old,''))
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/workflows/apply-product-updates-v4.yml
+          git commit -m "Enable FlatMate+ product patch" || true
+          git push
