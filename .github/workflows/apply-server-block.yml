@@ -1,0 +1,42 @@
+name: Apply server-side blocking
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch-server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Register blocking routes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('backend/server.py')
+          s = p.read_text()
+          if 'from block_routes import register_block_routes' not in s:
+              s = s.replace('from feature_routes import register_feature_routes\n', 'from feature_routes import register_feature_routes\nfrom block_routes import register_block_routes\n')
+          marker = 'register_feature_routes(api_router,db,get_current_user,manager,compute_match,user_public,haversine_km,gender_ok)\n'
+          if 'register_block_routes(api_router,db,get_current_user,compute_match,user_public)' not in s:
+              s = s.replace(marker, marker + 'register_block_routes(api_router,db,get_current_user,compute_match,user_public)\n')
+          p.write_text(s)
+          PY
+      - name: Validate backend
+        run: python -m py_compile backend/server.py backend/block_routes.py
+      - name: Commit server registration
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add backend/server.py
+          if git diff --cached --quiet; then
+            echo 'Server already patched.'
+          else
+            git commit -m 'Register server-side blocking routes'
+            git push
+          fi
