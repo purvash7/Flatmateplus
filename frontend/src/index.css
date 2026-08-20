@@ -13,7 +13,10 @@ h1,h2,h3,h4,.font-display { font-family:'Cabinet Grotesk','Manrope',sans-serif; 
 .font-mono-label { font-family:'Manrope',sans-serif; font-weight:700; letter-spacing:.14em; text-transform:uppercase; font-size:.72rem; }
 .shadow-soft { box-shadow:0 8px 30px rgba(43,45,66,.06); }
 .shadow-lift { box-shadow:0 20px 60px rgba(43,45,66,.12); }
-.app-shell { max-width:28rem; margin:0 auto; min-height:100dvh; position:relative; background:hsl(var(--background)); overflow:hidden; }
+.app-shell { width:100%; max-width:28rem; margin:0 auto; min-height:100dvh; position:relative; background:hsl(var(--background)); overflow:hidden; }
+@media (min-width:640px){.app-shell{max-width:48rem}.app-shell .max-w-md{max-width:42rem}}
+@media (min-width:1024px){.app-shell{max-width:72rem}.app-shell .max-w-md{max-width:64rem}}
+@media (min-width:1440px){.app-shell{max-width:88rem}.app-shell .max-w-md{max-width:72rem}}
 ::-webkit-scrollbar { width:6px; height:6px; }
 ::-webkit-scrollbar-thumb { background:hsl(var(--muted-foreground)/.3); border-radius:999px; }
 ::selection { background:hsl(var(--primary)/.25); }
@@ -21,11 +24,9 @@ h1,h2,h3,h4,.font-display { font-family:'Cabinet Grotesk','Manrope',sans-serif; 
 .pulse-ring { animation:ring-pulse 1.8s ease-out infinite; }
 .grainy { position:relative; }
 .grainy::after { content:''; position:absolute; inset:0; pointer-events:none; opacity:.05; background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
-
-/* Make every onboarding option readable instead of rendering blank pills. */
-.onboarding-questions [data-testid^="ob-lang-"],
-.onboarding-questions [data-testid^="ob-interest-"],
-.onboarding-questions [data-testid^="ob-flatpref-"] { color:hsl(var(--foreground)) !important; background-color:hsl(var(--card)) !important; border-color:hsl(var(--border)) !important; white-space:nowrap; }
+.onboarding-questions [data-testid^="ob-lang-"],.onboarding-questions [data-testid^="ob-interest-"],.onboarding-questions [data-testid^="ob-flatpref-"] { color:hsl(var(--foreground)) !important; background-color:hsl(var(--card)) !important; border-color:hsl(var(--border)) !important; white-space:nowrap; }
 .onboarding-questions [data-testid^="ob-lang-"].bg-primary { color:hsl(var(--primary-foreground)) !important; border-color:transparent !important; }
 .onboarding-questions [data-testid^="ob-interest-"].bg-foreground { color:hsl(var(--background)) !important; border-color:transparent !important; }
 .onboarding-questions [data-testid^="ob-flatpref-"].bg-accent { color:hsl(var(--accent-foreground)) !important; border-color:transparent !important; }
+@media (min-width:768px){.fixed.bottom-0.inset-x-0.max-w-md.mx-auto{max-width:48rem}.fixed.bottom-0.inset-x-0.max-w-md.mx-auto > *{max-width:48rem;margin-left:auto;margin-right:auto}.fixed.top-0.inset-x-0.max-w-md.mx-auto{max-width:48rem}}
+@media (min-width:1024px){.fixed.bottom-0.inset-x-0.max-w-md.mx-auto{max-width:72rem}.fixed.bottom-0.inset-x-0.max-w-md.mx-auto > *{max-width:72rem}.fixed.top-0.inset-x-0.max-w-md.mx-auto{max-width:72rem}}
