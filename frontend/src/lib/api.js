@@ -18,6 +18,10 @@ export function setToken(t) {
 
 export function fileUrl(path) {
   if (!path) return null;
-  const clean = String(path).replace(/^\/+/, "");
+  const value = String(path).trim();
+  if (/^https?:\/\//i.test(value) || value.startsWith("data:") || value.startsWith("blob:")) return value;
+  if (value.startsWith("/api/")) return `${BACKEND_URL}${value}`;
+  if (value.startsWith("/files/")) return `${API}${value}`;
+  const clean = value.replace(/^\/+/, "");
   return `${API}/files/${clean}`;
 }
