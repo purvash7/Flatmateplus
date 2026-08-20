@@ -1,6 +1,6 @@
 import axios from "axios";
 
-export const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+export const BACKEND_URL = (process.env.REACT_APP_BACKEND_URL || "").replace(/\/$/, "");
 export const API = `${BACKEND_URL}/api`;
 
 export const api = axios.create({ baseURL: API, withCredentials: true });
@@ -18,5 +18,6 @@ export function setToken(t) {
 
 export function fileUrl(path) {
   if (!path) return null;
-  return `${API}/files/${path}`;
+  const clean = String(path).replace(/^\/+/, "");
+  return `${API}/files/${clean}`;
 }
