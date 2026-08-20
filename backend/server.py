@@ -9,6 +9,7 @@ from pydantic import BaseModel, EmailStr
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone, timedelta
 from feature_routes import register_feature_routes
+from block_routes import register_block_routes
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -288,6 +289,7 @@ async def ws_endpoint(ws:WebSocket,user_id:str,token:str=Query(...)):
     except WebSocketDisconnect:manager.disconnect(user_id,ws)
 
 register_feature_routes(api_router,db,get_current_user,manager,compute_match,user_public,haversine_km,gender_ok)
+register_block_routes(api_router,db,get_current_user,compute_match,user_public)
 @api_router.get("/")
 async def root():return {"app":"FlatMate+","status":"ok"}
 app.include_router(api_router)
