@@ -8,27 +8,36 @@ const badgeVariants = cva(
   {
     variants: {
       variant: {
-        default:
-          "border-transparent bg-primary text-primary-foreground shadow hover:bg-primary/80",
-        secondary:
-          "border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80",
-        destructive:
-          "border-transparent bg-destructive text-destructive-foreground shadow hover:bg-destructive/80",
+        default: "border-transparent bg-primary text-primary-foreground shadow hover:bg-primary/80",
+        secondary: "border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80",
+        destructive: "border-transparent bg-destructive text-destructive-foreground shadow hover:bg-destructive/80",
         outline: "text-foreground",
       },
     },
-    defaultVariants: {
-      variant: "outline",
-    },
+    defaultVariants: { variant: "outline" },
   }
 )
 
-function Badge({
-  className,
-  variant,
-  ...props
-}) {
-  return (<div className={cn(badgeVariants({ variant }), className)} {...props} />);
+function Badge({ className, variant, style, ...props }) {
+  const classes = String(className || "");
+  const selectedPrimary = classes.includes("bg-primary");
+  const selectedForeground = classes.includes("bg-foreground");
+  const selectedAccent = classes.includes("bg-accent");
+  const forcedColor = selectedPrimary
+    ? "!text-primary-foreground"
+    : selectedForeground
+      ? "!text-background"
+      : selectedAccent
+        ? "!text-accent-foreground"
+        : "!text-foreground";
+  const forcedBg = selectedPrimary
+    ? "!bg-primary !border-primary"
+    : selectedForeground
+      ? "!bg-foreground"
+      : selectedAccent
+        ? "!bg-accent !border-accent"
+        : "";
+  return <div className={cn(badgeVariants({ variant }), forcedColor, forcedBg, className)} style={style} {...props} />;
 }
 
 export { Badge, badgeVariants }
